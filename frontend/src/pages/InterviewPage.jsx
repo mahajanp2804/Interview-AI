@@ -1,17 +1,27 @@
-import { useState, useEffect, useRef } from 'react'
+import { Fragment, useState, useEffect, useRef } from 'react'
 import { useApp } from '../AppContext'
-import { evaluateAnswer, getHint } from '../api'
+import { evaluateAnswer, getHint, errorMessage } from '../api'
 
 const INTERVIEWERS = ['Alex Chen','Sarah Mitchell','Raj Patel','Emma Rodriguez','Michael Kim','Priya Sharma']
 const TYPE_LABEL = { technical: '🔧 Technical', behavioral: '🧠 Behavioral', 'system-design': '🏗 System Design' }
 
-function fmt(text) {
-  // Very light markdown: **bold**
-  return text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>')
+// Very light markdown: **bold** and line breaks, rendered as elements (never raw HTML)
+function Formatted({ text }) {
+  return text.split('\n').map((line, i) => (
+    <Fragment key={i}>
+      {i > 0 && <br />}
+      {line.split(/\*\*(.+?)\*\*/g).map((part, j) => (j % 2 ? <strong key={j}>{part}</strong> : part))}
+    </Fragment>
+  ))
 }
 
 function now() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+function average(answers, key) {
+  if (!answers.length) return null
+  return Math.round(answers.reduce((s, x) => s + (x.eval?.[key] ?? 0), 0) / answers.length)
 }
 
 export default function InterviewPage({ onEnd }) {
@@ -21,12 +31,12 @@ export default function InterviewPage({ onEnd }) {
   const [input, setInput]     = useState('')
   const [sending, setSending] = useState(false)
   const [hint, setHint]       = useState(null)
-  const [liveScores, setLiveScores] = useState({ technical: 0, communication: 0, clarity: 0, confidence: 0 })
-  const [avgScore, setAvgScore] = useState(null)
   const [interviewer] = useState(() => INTERVIEWERS[Math.floor(Math.random() * INTERVIEWERS.length)])
   const messagesEnd = useRef(null)
   const inputRef    = useRef(null)
-  const answersRef  = useRef([])   // local mirror to avoid stale closure
+  const answersRef  = useRef(session.answers)   // local mirror to avoid stale closure
+  const endedRef    = useRef(false)
+  const startedRef  = useRef(false)
 
   const scroll = () => messagesEnd.current?.scrollIntoView({ behavior: 'smooth' })
 
@@ -35,22 +45,49 @@ export default function InterviewPage({ onEnd }) {
     setTimeout(scroll, 50)
   }
 
-  // Init: welcome + Q1
+  // Init: welcome + current question (resumes mid-interview after a tab switch)
   useEffect(() => {
-    if (!session.questions.length) return
-    const company = config.company ? ` at ${config.company}` : ''
-    addMsg('ai', `Hello! I'm **${interviewer}**, your interviewer today.\n\nWe'll be doing a **${config.interview_type}** interview for a **${config.role}** position${company} at **${config.level}** level.\n\n**${session.questions.length} questions** · **${config.difficulty}** difficulty\n\nUse the STAR method for behavioral questions. Think out loud for technical ones. Let's begin!`)
-    setTimeout(() => askQuestion(0), 900)
+    if (!session.questions.length || startedRef.current) return
+    startedRef.current = true   // StrictMode runs effects twice in dev
+    if (session.currentQ > 0) {
+      addMsg('ai', `Welcome back! Let's pick up where we left off.`)
+    } else {
+      const company = config.company ? ` at ${config.company}` : ''
+      const fallbackNote = session.fallback
+        ? `\n\n⚠ The AI couldn't generate questions, so these come from the built-in question bank.`
+        : ''
+      addMsg('ai', `Hello! I'm **${interviewer}**, your interviewer today.\n\nWe'll be doing a **${config.interview_type}** interview for a **${config.role}** position${company} at **${config.level}** level.\n\n**${session.questions.length} questions** · **${config.difficulty}** difficulty\n\nUse the STAR method for behavioral questions. Think out loud for technical ones. Let's begin!${fallbackNote}`)
+    }
+    setTimeout(() => askQuestion(session.currentQ), 900)
   }, [])  // eslint-disable-line
+
+  function finish() {
+    if (endedRef.current) return
+    endedRef.current = true
+    onEnd(answersRef.current)
+  }
 
   function askQuestion(idx) {
     if (idx >= session.questions.length) {
       addMsg('ai', "That's all the questions! Give me a moment to compile your results...")
-      setTimeout(() => onEnd(answersRef.current), 1200)
+      setTimeout(finish, 1200)
       return
     }
     const q = session.questions[idx]
     addMsg('ai', `**Question ${idx + 1} of ${session.questions.length}** · ${TYPE_LABEL[q.type] ?? '🔧 Technical'}\n\n${q.q}`)
+  }
+
+  // Records the answer and moves on. `session` here is this render's snapshot,
+  // so the next index is computed explicitly rather than read back after dispatch.
+  function recordAndAdvance(entry, delay) {
+    const nextIdx = session.currentQ + 1
+    answersRef.current = [...answersRef.current, entry]
+    dispatch({ type: 'PUSH_ANSWER', answer: entry })
+    setTimeout(() => {
+      askQuestion(nextIdx)
+      setSending(false)
+      inputRef.current?.focus()
+    }, delay)
   }
 
   async function handleSend() {
@@ -73,35 +110,17 @@ export default function InterviewPage({ onEnd }) {
         answer,
         config,
       })
-
-      const entry = { q: q.q, a: answer, eval: ev, type: q.type }
-      answersRef.current = [...answersRef.current, entry]
-      dispatch({ type: 'PUSH_ANSWER', answer: entry })
-
-      // Update live scores
-      const all = answersRef.current
-      const avg = (key) => Math.round(all.reduce((s, x) => s + (x.eval?.[key] ?? 0), 0) / all.length)
-      const newScores = { technical: avg('technical'), communication: avg('communication'), clarity: avg('clarity'), confidence: avg('confidence') }
-      setLiveScores(newScores)
-      const overallAvg = Math.round(all.reduce((s, x) => s + (x.eval?.score ?? 0), 0) / all.length)
-      setAvgScore(overallAvg)
-
       const icon = ev.score >= 80 ? '✅' : ev.score >= 60 ? '⚡' : '💭'
       addMsg('ai', `${icon} **Quick thoughts:** ${ev.feedback}\n\n${ev.followup_comment ?? ''}`)
-
-      const nextIdx = session.currentQ  // currentQ already incremented by dispatch
-      setTimeout(() => askQuestion(nextIdx), 1600)
+      recordAndAdvance({ q: q.q, a: answer, eval: ev, type: q.type }, 1600)
     } catch (e) {
-      const entry = { q: q.q, a: answer, eval: { score: 60, technical: 60, communication: 60, clarity: 60, confidence: 60, problem_solving: 60, feedback: 'Good attempt!', strengths: [], improvements: [], followup_comment: "Let's continue." }, type: q.type }
-      answersRef.current = [...answersRef.current, entry]
-      dispatch({ type: 'PUSH_ANSWER', answer: entry })
-      addMsg('ai', "Good answer! Let's keep going.")
-      setTimeout(() => askQuestion(session.currentQ), 1200)
+      // Don't invent a score: keep the answer so it can be resent
+      addMsg('ai', `⚠ **I couldn't evaluate that answer.** ${errorMessage(e)}\n\nYour answer is back in the box. Send it again when you're ready.`)
+      setInput(answer)
+      setSending(false)
     }
 
     dispatch({ type: 'SET_STATUS_BUSY', value: false })
-    setSending(false)
-    inputRef.current?.focus()
   }
 
   async function handleHint() {
@@ -117,13 +136,21 @@ export default function InterviewPage({ onEnd }) {
 
   function handleSkip() {
     const q = session.questions[session.currentQ]
-    const entry = { q: q.q, a: '[SKIPPED]', eval: { score: 0, technical: 0, communication: 0, clarity: 0, confidence: 0, problem_solving: 0, feedback: 'Skipped.', strengths: [], improvements: ['Answer every question — skipping scores 0'], followup_comment: '' }, type: q.type }
-    answersRef.current = [...answersRef.current, entry]
-    dispatch({ type: 'PUSH_ANSWER', answer: entry })
+    if (!q || sending) return
+    setSending(true)
+    setHint(null)
     addMsg('ai', "No problem, let's move on. Skipping is noted — in a real interview, always attempt an answer even if uncertain.")
-    setTimeout(() => askQuestion(session.currentQ), 800)
+    recordAndAdvance({ q: q.q, a: '[SKIPPED]', eval: { score: 0, technical: 0, communication: 0, clarity: 0, confidence: 0, problem_solving: 0, feedback: 'Skipped.', strengths: [], improvements: ['Answer every question — skipping scores 0'], followup_comment: '' }, type: q.type }, 800)
   }
 
+  const answers = session.answers
+  const avgScore = average(answers, 'score')
+  const liveScores = {
+    technical: average(answers, 'technical') ?? 0,
+    communication: average(answers, 'communication') ?? 0,
+    clarity: average(answers, 'clarity') ?? 0,
+    confidence: average(answers, 'confidence') ?? 0,
+  }
   const pct = session.questions.length ? Math.round((session.currentQ / session.questions.length) * 100) : 0
   const ringOffset = 153 - (153 * (avgScore ?? 0) / 100)
 
@@ -149,7 +176,7 @@ export default function InterviewPage({ onEnd }) {
               <div key={i} className={`msg ${m.role}`}>
                 <div className={`msg-avatar ${m.role}`}>{m.role === 'ai' ? '🎙' : '👤'}</div>
                 <div>
-                  <div className={`msg-bubble ${m.role}`} dangerouslySetInnerHTML={{ __html: fmt(m.text) }} />
+                  <div className={`msg-bubble ${m.role}`}><Formatted text={m.text} /></div>
                   <div className="msg-time">{m.time}</div>
                 </div>
               </div>
@@ -167,10 +194,10 @@ export default function InterviewPage({ onEnd }) {
             <textarea
               ref={inputRef}
               className="answer-input"
-              placeholder="Type your answer here... (Ctrl+Enter to submit)"
+              placeholder="Type your answer here... (Ctrl/⌘ + Enter to submit)"
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && e.ctrlKey) handleSend() }}
+              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend() }}
               disabled={sending}
             />
             <button className="btn btn-primary" onClick={handleSend} disabled={sending || !input.trim()} style={{ padding: '12px 18px', alignSelf: 'flex-end' }}>
@@ -210,7 +237,7 @@ export default function InterviewPage({ onEnd }) {
             <div className="sidebar-label">Questions</div>
             <div className="q-list">
               {session.questions.map((q, i) => {
-                const ans = answersRef.current[i]
+                const ans = answers[i]
                 const cls = i === session.currentQ ? 'current' : ans ? (ans.a === '[SKIPPED]' ? 'skipped' : 'answered') : ''
                 const icon = i === session.currentQ ? '▶' : ans ? (ans.a === '[SKIPPED]' ? '⏭' : '✓') : '○'
                 return (
@@ -224,7 +251,7 @@ export default function InterviewPage({ onEnd }) {
 
           {/* Hint */}
           <div className="sidebar-section">
-            <button className="hint-btn" onClick={handleHint}>💡 Request a hint</button>
+            <button className="hint-btn" onClick={handleHint} disabled={sending}>💡 Request a hint</button>
             {hint && <div className="hint-box">💡 {hint}</div>}
           </div>
 
@@ -232,8 +259,8 @@ export default function InterviewPage({ onEnd }) {
           <div className="sidebar-section">
             <div className="sidebar-label">Actions</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button className="option-btn" style={{ textAlign: 'left', fontSize: 11 }} onClick={handleSkip}>⏭ Skip this question</button>
-              <button className="option-btn" style={{ textAlign: 'left', fontSize: 11, color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => onEnd(answersRef.current)}>🏁 End & get feedback</button>
+              <button className="option-btn" style={{ textAlign: 'left', fontSize: 11 }} onClick={handleSkip} disabled={sending}>⏭ Skip this question</button>
+              <button className="option-btn" style={{ textAlign: 'left', fontSize: 11, color: 'var(--red)', borderColor: 'var(--red)' }} onClick={finish}>🏁 End & get feedback</button>
             </div>
           </div>
         </div>

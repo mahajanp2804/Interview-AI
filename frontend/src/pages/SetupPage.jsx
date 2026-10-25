@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { useApp } from '../AppContext'
-import { generateQuestions } from '../api'
+import { generateQuestions, errorMessage } from '../api'
 
 const ROLES = [
   ['🤖', 'AI/ML Engineer'],
@@ -35,16 +35,16 @@ export default function SetupPage({ onStartInterview }) {
     dispatch({ type: 'SET_STATUS_BUSY', value: true })
 
     try {
-      const questions = await generateQuestions({ ...config, company: finalCompany })
+      const { questions, fallback } = await generateQuestions({ ...config, company: finalCompany })
       const uid = uuidv4()
-      dispatch({ type: 'START_SESSION', uid, questions })
+      dispatch({ type: 'START_SESSION', uid, questions, fallback })
       dispatch({ type: 'SET_LOADING', value: false })
       dispatch({ type: 'SET_STATUS_BUSY', value: false })
       onStartInterview()
     } catch (e) {
       dispatch({ type: 'SET_LOADING', value: false })
       dispatch({ type: 'SET_STATUS_BUSY', value: false })
-      alert('Failed to connect to the backend. Make sure it is running on port 8000.')
+      alert(`Couldn't start the interview: ${errorMessage(e)}`)
     }
   }
 

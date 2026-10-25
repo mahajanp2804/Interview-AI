@@ -6,10 +6,20 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
+// Human-readable reason for a failed request (backend sends { detail } on AI errors)
+export function errorMessage(e) {
+  const detail = e?.response?.data?.detail
+  if (typeof detail === 'string') return detail
+  if (e?.code === 'ECONNABORTED') return 'The request timed out.'
+  if (!e?.response) return 'Could not reach the backend. Is it running on port 8000?'
+  return `Request failed (${e.response.status}).`
+}
+
 // ── Interview endpoints ──────────────────────────────────
 
+// Resolves to { questions, fallback }
 export const generateQuestions = (config) =>
-  api.post('/interview/questions', { config }).then(r => r.data.questions)
+  api.post('/interview/questions', { config }).then(r => r.data)
 
 export const evaluateAnswer = (payload) =>
   api.post('/interview/evaluate', payload).then(r => r.data)

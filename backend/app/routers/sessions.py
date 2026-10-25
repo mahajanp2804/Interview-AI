@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, func, delete
@@ -91,7 +91,7 @@ async def session_stats(db: AsyncSession = Depends(get_db)):
     # Consecutive calendar days (UTC) with at least one session, ending today
     days_with_sessions = {r.created_at.date() for r in rows if r.created_at}
     streak = 0
-    day = datetime.utcnow().date()
+    day = datetime.now(timezone.utc).date()
     while day in days_with_sessions:
         streak += 1
         day -= timedelta(days=1)

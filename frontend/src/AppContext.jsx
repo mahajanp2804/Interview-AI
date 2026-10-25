@@ -14,6 +14,7 @@ const initialState = {
   session: {
     uid: null,
     questions: [],
+    fallback: false,  // questions came from the built-in bank, not the AI
     answers: [],      // [{q, a, eval, type}]
     scores: [],
     currentQ: 0,
@@ -32,7 +33,7 @@ function reducer(state, action) {
     case 'SET_CONFIG':
       return { ...state, config: { ...state.config, ...action.payload } }
     case 'START_SESSION':
-      return { ...state, session: { ...initialState.session, uid: action.uid, questions: action.questions, active: true, startTime: Date.now() } }
+      return { ...state, session: { ...initialState.session, uid: action.uid, questions: action.questions, fallback: !!action.fallback, active: true, startTime: Date.now() } }
     case 'PUSH_ANSWER':
       return { ...state, session: { ...state.session, answers: [...state.session.answers, action.answer], scores: [...state.session.scores, action.answer.eval?.score ?? 0], currentQ: state.session.currentQ + 1 } }
     case 'END_SESSION':
