@@ -59,6 +59,24 @@ npm run dev
 | `DATABASE_URL` | `sqlite+aiosqlite:///./interviewai.db` | SQLAlchemy async URL |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | Comma-separated allowed origins |
 
+## How to use
+
+1. **Setup tab:** pick your role, level, type, difficulty, company style and question count.
+2. Click **Start Interview**. Your AI interviewer introduces themselves and asks the first question.
+3. **Type your answers** in the text area (Ctrl/⌘ + Enter to submit quickly).
+4. Use the **sidebar** to watch your live score, see which questions are done, request a hint or skip.
+5. After the last question the interview ends on its own (or click **End & get feedback** at any time), and you're taken to the **Feedback tab**.
+6. Review your scores and recommendations, then check the **Roadmap tab** to plan next steps.
+7. All past sessions appear in the **History tab**.
+
+## Tips for best results
+
+- **Behavioral questions:** use the STAR method (Situation, Task, Action, Result).
+- **Technical questions:** think out loud and explain your reasoning before jumping to an answer.
+- **System design:** start with requirements, then components, then scale concerns.
+- **Be specific:** vague answers score lower than detailed ones with real examples.
+- **Practice consistently:** aim for 3 sessions per week, varying difficulty and role.
+
 ## How it works
 
 ```
@@ -97,3 +115,14 @@ frontend/
 ## Roadmap
 
 See [PLANNER.md](PLANNER.md) for the improvement plan.
+
+## Limitations
+
+- No user accounts yet: everyone using the same backend shares one session history.
+- Roadmap progress is stored in your browser's localStorage, and clearing it resets the checklist.
+- Refreshing the page mid-interview loses the session in progress.
+- Coding interviews (live code editor) and resume / job-description based questions are planned. See [PLANNER.md](PLANNER.md).
+
+## License
+
+Built as a personal practice tool. Free to use and extend.
