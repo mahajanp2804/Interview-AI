@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from './AppContext'
-import { generateFeedback, saveSession } from './api'
+import { generateFeedback, saveSession, errorMessage } from './api'
 import LoadingOverlay from './LoadingOverlay'
 import SetupPage    from './pages/SetupPage'
 import InterviewPage from './pages/InterviewPage'
@@ -20,6 +20,7 @@ export default function App() {
   const { state, dispatch } = useApp()
   const [tab, setTab]         = useState('setup')
   const [feedback, setFeedback] = useState(null)
+  const [feedbackError, setFeedbackError] = useState(null)
   const [qaPairs, setQaPairs]   = useState([])
   const [histCount, setHistCount] = useState(0)
 
@@ -32,10 +33,10 @@ export default function App() {
     setTab('interview')
   }
 
-  // Called by InterviewPage when session ends
-  async function handleInterviewEnd(answers) {
+  // Generates the report for `answers`; on failure the answers are kept so it can be retried
+  async function requestFeedback(answers) {
     dispatch({ type: 'SET_LOADING', value: true, msg: 'Generating your feedback report...' })
-    dispatch({ type: 'END_SESSION' })
+    setFeedbackError(null)
 
     try {
       const fb = await generateFeedback({
@@ -58,19 +59,26 @@ export default function App() {
       }).catch(() => {}) // non-fatal
 
       setFeedback(fb)
-      setQaPairs(answers)
       setHistCount(c => c + 1)
-      dispatch({ type: 'SET_LOADING', value: false })
-      setTab('feedback')
     } catch (e) {
-      dispatch({ type: 'SET_LOADING', value: false })
-      setTab('feedback')
+      setFeedbackError(errorMessage(e))
     }
+    dispatch({ type: 'SET_LOADING', value: false })
+  }
+
+  // Called by InterviewPage when session ends
+  async function handleInterviewEnd(answers) {
+    dispatch({ type: 'END_SESSION' })
+    setQaPairs(answers)
+    setFeedback(null)
+    setTab('feedback')
+    await requestFeedback(answers)
   }
 
   function handlePracticeAgain() {
     dispatch({ type: 'RESET_SESSION' })
     setFeedback(null)
+    setFeedbackError(null)
     setQaPairs([])
     setTab('setup')
   }
@@ -108,7 +116,7 @@ export default function App() {
 
       {/* Pages */}
       {tab === 'setup'     && <SetupPage onStartInterview={handleStartInterview} />}
-      {tab === 'interview' && state.session.questions.length > 0
+      {tab === 'interview' && state.session.active && state.session.questions.length > 0
         ? <InterviewPage onEnd={handleInterviewEnd} />
         : tab === 'interview' && (
             <div className="page"><div className="page-inner empty-state">
@@ -117,7 +125,7 @@ export default function App() {
             </div></div>
           )
       }
-      {tab === 'feedback'  && <FeedbackPage feedback={feedback} qaPairs={qaPairs} onPracticeAgain={handlePracticeAgain} onRoadmap={() => goTab('roadmap')} onHistory={() => goTab('history')} />}
+      {tab === 'feedback'  && <FeedbackPage feedback={feedback} error={feedbackError} onRetry={() => requestFeedback(qaPairs)} qaPairs={qaPairs} onPracticeAgain={handlePracticeAgain} onRoadmap={() => goTab('roadmap')} onHistory={() => goTab('history')} />}
       {tab === 'history'   && <HistoryPage />}
       {tab === 'roadmap'   && <RoadmapPage />}
     </div>

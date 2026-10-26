@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 from sqlalchemy import Integer, String, Float, DateTime, Text, JSON
-from datetime import datetime
+from datetime import datetime, timezone
 from app.config import settings
 
 
@@ -30,7 +30,7 @@ class SessionRecord(Base):
     answers_count: Mapped[int]    = mapped_column(Integer, default=0)
     qa_data:     Mapped[dict]     = mapped_column(JSON, nullable=True)   # full Q&A + evals
     feedback_data: Mapped[dict]   = mapped_column(JSON, nullable=True)   # full feedback report
-    created_at:  Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at:  Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 async def get_db():

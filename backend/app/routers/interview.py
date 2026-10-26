@@ -18,7 +18,7 @@ router = APIRouter(prefix="/interview", tags=["interview"])
 @router.post("/questions", response_model=QuestionsResponse)
 async def create_questions(body: GenerateQuestionsRequest):
     cfg = body.config
-    questions = await asyncio.to_thread(
+    questions, fallback = await asyncio.to_thread(
         ai_service.generate_questions,
         cfg.role,
         cfg.level,
@@ -27,7 +27,7 @@ async def create_questions(body: GenerateQuestionsRequest):
         cfg.company,
         cfg.num_questions,
     )
-    return QuestionsResponse(questions=questions)
+    return QuestionsResponse(questions=questions, fallback=fallback)
 
 
 @router.post("/evaluate", response_model=EvalResponse)

@@ -25,9 +25,9 @@ function scoreColor(s) {
 
 function QAItem({ qa, qf, idx }) {
   const [open, setOpen] = useState(false)
-  const verdict = qf?.verdict ?? 'acceptable'
+  const verdict = qa.a === '[SKIPPED]' ? 'needs-work' : qf?.verdict ?? 'acceptable'
   const vClass = verdict === 'strong' ? 'verdict-strong' : verdict === 'needs-work' ? 'verdict-needs-work' : 'verdict-acceptable'
-  const vLabel = verdict === 'strong' ? 'Strong ✅' : verdict === 'needs-work' ? 'Needs Work ⚠' : 'Acceptable ⚡'
+  const vLabel = qa.a === '[SKIPPED]' ? 'Skipped ⏭' : verdict === 'strong' ? 'Strong ✅' : verdict === 'needs-work' ? 'Needs Work ⚠' : 'Acceptable ⚡'
 
   return (
     <div className="qa-review">
@@ -56,7 +56,23 @@ function QAItem({ qa, qf, idx }) {
   )
 }
 
-export default function FeedbackPage({ feedback, qaPairs, onPracticeAgain, onRoadmap, onHistory }) {
+export default function FeedbackPage({ feedback, error, onRetry, qaPairs, onPracticeAgain, onRoadmap, onHistory }) {
+  if (!feedback && error) {
+    return (
+      <div className="page">
+        <div className="page-inner empty-state">
+          <div className="empty-icon">⚠</div>
+          Couldn't generate your feedback report.<br />
+          <span style={{ fontSize: 12, color: 'var(--text3)' }}>{error}</span>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 16 }}>
+            <button className="btn btn-primary" onClick={onRetry}>↻ Retry feedback</button>
+            <button className="btn btn-secondary" onClick={onPracticeAgain}>Discard & start over</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!feedback) {
     return (
       <div className="page">
@@ -119,7 +135,7 @@ export default function FeedbackPage({ feedback, qaPairs, onPracticeAgain, onRoa
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>📝 Question-by-Question Review</div>
           {qaPairs.map((qa, i) => (
-            <QAItem key={i} qa={qa} qf={q_feedback?.[i]} idx={i} />
+            <QAItem key={i} qa={qa} qf={q_feedback?.find(f => f.idx === i)} idx={i} />
           ))}
         </div>
 

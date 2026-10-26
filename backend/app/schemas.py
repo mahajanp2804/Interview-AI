@@ -1,6 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ── Request Bodies ───────────────────────────────────────────────
@@ -57,6 +57,7 @@ class QuestionItem(BaseModel):
 
 class QuestionsResponse(BaseModel):
     questions: List[QuestionItem]
+    fallback: bool = False   # True when Gemini failed and the built-in bank was used
 
 
 class EvalResponse(BaseModel):
@@ -101,6 +102,12 @@ class SessionSummary(BaseModel):
     answers_count: int
     duration_min: Optional[int]
     created_at: datetime
+
+    @field_validator("created_at")
+    @classmethod
+    def _assume_utc(cls, v: datetime) -> datetime:
+        # SQLite drops tzinfo; stored values are UTC
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
 
     class Config:
         from_attributes = True
