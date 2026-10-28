@@ -21,7 +21,7 @@ Practice mock interviews with an AI interviewer. Pick a role, level and intervie
 
 ## Getting started
 
-**Requirements:** Python 3.11+, Node 18+, and a free Gemini API key from [Google AI Studio](https://aistudio.google.com).
+**Requirements:** Python 3.11+, Node 22.12+, and a free Gemini API key from [Google AI Studio](https://aistudio.google.com).
 
 ```bash
 make install        # creates backend/venv, installs deps, copies .env.example → backend/.env
@@ -105,12 +105,25 @@ backend/
     routers/         interview + sessions endpoints
     database.py      SQLAlchemy model (sessions table)
     schemas.py       request/response models
+  tests/             pytest suite (Gemini mocked)
 frontend/
   src/
     pages/           Setup, Interview, Feedback, History, Roadmap
     AppContext.jsx   global state (config + active session)
     api.js           API client
+    App.test.jsx     Vitest interview-flow tests
 ```
+
+## Development
+
+```bash
+make test           # backend pytest + frontend Vitest
+make lint           # ruff + ESLint
+```
+
+CI (`.github/workflows/ci.yml`) runs lint, tests and the production build on every push to `main` and every pull request. The Gemini client is mocked in tests, so no API key is needed.
+
+The frontend uses client-side routes (`/interview`, `/feedback/:uid`, ...). When you host the built `dist/`, configure the server to serve `index.html` for unknown paths.
 
 ## Roadmap
 
@@ -120,7 +133,7 @@ See [PLANNER.md](PLANNER.md) for the improvement plan.
 
 - No user accounts yet: everyone using the same backend shares one session history.
 - Roadmap progress is stored in your browser's localStorage, and clearing it resets the checklist.
-- Refreshing the page mid-interview loses the session in progress.
+- An interview in progress is kept in the browser's localStorage, so it survives a refresh but not a switch to another browser.
 - Coding interviews (live code editor) and resume / job-description based questions are planned. See [PLANNER.md](PLANNER.md).
 
 ## License
