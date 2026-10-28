@@ -7,6 +7,7 @@ select = ["E4", "E7", "E9", "F", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]   # so `import app` works when run as plain `pytest`
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI dependency injection uses calls in argument defaults by design
