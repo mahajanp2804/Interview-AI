@@ -1,4 +1,7 @@
-import { createContext, useContext, useReducer } from 'react'
+import { createContext, useContext, useEffect, useReducer } from 'react'
+
+// An interview in progress is kept here so a page refresh doesn't lose it
+const STORAGE_KEY = 'iai_active_session'
 
 const initialState = {
   // Setup
@@ -24,7 +27,6 @@ const initialState = {
   // UI
   loading: false,
   loadingMsg: 'Thinking...',
-  tab: 'setup',
   statusBusy: false,
 }
 
@@ -40,8 +42,6 @@ function reducer(state, action) {
       return { ...state, session: { ...state.session, active: false } }
     case 'SET_LOADING':
       return { ...state, loading: action.value, loadingMsg: action.msg ?? state.loadingMsg }
-    case 'SET_TAB':
-      return { ...state, tab: action.tab }
     case 'SET_STATUS_BUSY':
       return { ...state, statusBusy: action.value }
     case 'RESET_SESSION':
@@ -51,10 +51,33 @@ function reducer(state, action) {
   }
 }
 
+function loadInitialState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY))
+    if (saved?.session?.active) return { ...initialState, config: saved.config, session: saved.session }
+  } catch {
+    // storage unavailable or corrupt: start fresh
+  }
+  return initialState
+}
+
 const AppContext = createContext(null)
 
 export function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(reducer, undefined, loadInitialState)
+
+  useEffect(() => {
+    try {
+      if (state.session.active) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ config: state.config, session: state.session }))
+      } else {
+        localStorage.removeItem(STORAGE_KEY)
+      }
+    } catch {
+      // storage unavailable (private mode, quota): persistence is best-effort
+    }
+  }, [state.config, state.session])
+
   return <AppContext.Provider value={{ state, dispatch }}>{children}</AppContext.Provider>
 }
 

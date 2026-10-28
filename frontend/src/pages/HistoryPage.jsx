@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { listSessions, getStats, deleteSession } from '../api'
 
 const ROLE_ICONS = {
@@ -21,6 +22,7 @@ export default function HistoryPage() {
   const [sessions, setSessions] = useState([])
   const [stats, setStats]       = useState(null)
   const [loading, setLoading]   = useState(true)
+  const navigate = useNavigate()
 
   async function load() {
     setLoading(true)
@@ -36,7 +38,8 @@ export default function HistoryPage() {
 
   useEffect(() => { load() }, [])
 
-  async function handleDelete(uid) {
+  async function handleDelete(e, uid) {
+    e.stopPropagation()
     if (!window.confirm('Delete this session?')) return
     await deleteSession(uid)
     load()
@@ -64,12 +67,12 @@ export default function HistoryPage() {
         ) : (
           <div className="session-list">
             {sessions.map((s, i) => (
-              <div key={s.session_uid} className="session-card">
+              <div key={s.session_uid} className="session-card" style={{ cursor: 'pointer' }} onClick={() => navigate(`/feedback/${s.session_uid}`)}>
                 <div className="session-icon" style={{ background: BG_COLORS[i % 5], color: ICON_COLORS[i % 5] }}>
                   {ROLE_ICONS[s.role] ?? '💼'}
                 </div>
                 <div className="session-meta">
-                  <div className="session-title">{s.role}</div>
+                  <Link className="session-title" to={`/feedback/${s.session_uid}`} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>{s.role}</Link>
                   <div className="session-detail">
                     {new Date(s.created_at).toLocaleDateString()} · {s.level} · {s.difficulty} · {s.interview_type} · {s.answers_count} answered
                     {s.duration_min ? ` · ${s.duration_min} min` : ''}
@@ -83,9 +86,10 @@ export default function HistoryPage() {
                   <div className="session-score-label">{s.grade ?? 'SCORE'}</div>
                 </div>
                 <button
-                  onClick={() => handleDelete(s.session_uid)}
+                  onClick={e => handleDelete(e, s.session_uid)}
                   style={{ background: 'none', border: 'none', color: 'var(--text3)', fontSize: 14, padding: '4px 6px', marginLeft: 4, cursor: 'pointer' }}
                   title="Delete"
+                  aria-label="Delete session"
                 >✕</button>
               </div>
             ))}
