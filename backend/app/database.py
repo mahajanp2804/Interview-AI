@@ -1,6 +1,6 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
-from sqlalchemy import Integer, String, Float, DateTime, Text, JSON
+from sqlalchemy import Integer, String, Float, DateTime, JSON
 from datetime import datetime, timezone
 from app.config import settings
 

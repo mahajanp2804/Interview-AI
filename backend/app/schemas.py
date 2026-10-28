@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List, Any
 from datetime import datetime, timezone
 
@@ -109,8 +109,7 @@ class SessionSummary(BaseModel):
         # SQLite drops tzinfo; stored values are UTC
         return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SessionDetail(SessionSummary):
