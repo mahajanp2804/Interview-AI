@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { useApp } from './AppContext'
-import { generateFeedback, saveSession, errorMessage } from './api'
+import { generateFeedback, saveSession, getSession, errorMessage } from './api'
 import LoadingOverlay from './LoadingOverlay'
 import SetupPage    from './pages/SetupPage'
 import InterviewPage from './pages/InterviewPage'
@@ -9,38 +10,59 @@ import HistoryPage  from './pages/HistoryPage'
 import RoadmapPage  from './pages/RoadmapPage'
 
 const TABS = [
-  { id: 'setup',     label: '⚙ Setup' },
-  { id: 'interview', label: '💬 Interview' },
-  { id: 'feedback',  label: '📊 Feedback' },
-  { id: 'history',   label: '📁 History' },
-  { id: 'roadmap',   label: '🗺 Roadmap' },
+  { path: '/',          label: '⚙ Setup' },
+  { path: '/interview', label: '💬 Interview' },
+  { path: '/feedback',  label: '📊 Feedback' },
+  { path: '/history',   label: '📁 History' },
+  { path: '/roadmap',   label: '🗺 Roadmap' },
 ]
+
+function EmptyPage({ icon, children }) {
+  return (
+    <div className="page"><div className="page-inner empty-state">
+      <div className="empty-icon">{icon}</div>
+      {children}
+    </div></div>
+  )
+}
+
+// /feedback/:uid: the report just generated if it matches, otherwise the saved session from the backend
+function SavedFeedback({ current, ...actions }) {
+  const { uid } = useParams()
+  const [saved, setSaved] = useState(null)
+  const [error, setError] = useState(null)
+  const isCurrent = current.feedback && current.uid === uid
+
+  useEffect(() => {
+    if (isCurrent) return
+    setSaved(null)
+    setError(null)
+    getSession(uid).then(setSaved).catch(e => setError(errorMessage(e)))
+  }, [uid, isCurrent])
+
+  if (isCurrent) return <FeedbackPage feedback={current.feedback} qaPairs={current.qaPairs} {...actions} />
+  if (error) return <EmptyPage icon="⚠">Couldn't load this session.<br /><span style={{ fontSize: 12, color: 'var(--text3)' }}>{error}</span></EmptyPage>
+  if (!saved) return <EmptyPage icon="⏳">Loading...</EmptyPage>
+  return <FeedbackPage feedback={saved.feedback_data} qaPairs={saved.qa_data ?? []} {...actions} />
+}
 
 export default function App() {
   const { state, dispatch } = useApp()
-  const [tab, setTab]         = useState('setup')
+  const navigate = useNavigate()
   const [feedback, setFeedback] = useState(null)
   const [feedbackError, setFeedbackError] = useState(null)
   const [qaPairs, setQaPairs]   = useState([])
   const [histCount, setHistCount] = useState(0)
 
-  function goTab(t) {
-    setTab(t)
-  }
-
-  // Called by SetupPage once questions are loaded
-  function handleStartInterview() {
-    setTab('interview')
-  }
-
   // Generates the report for `answers`; on failure the answers are kept so it can be retried
   async function requestFeedback(answers) {
     dispatch({ type: 'SET_LOADING', value: true, msg: 'Generating your feedback report...' })
     setFeedbackError(null)
+    const uid = state.session.uid
 
     try {
       const fb = await generateFeedback({
-        session_uid: state.session.uid,
+        session_uid: uid,
         config: state.config,
         qa_pairs: answers,
       })
@@ -50,16 +72,18 @@ export default function App() {
         ? Math.round((Date.now() - state.session.startTime) / 60000)
         : null
 
-      await saveSession({
-        session_uid: state.session.uid,
+      const saved = await saveSession({
+        session_uid: uid,
         config: state.config,
         qa_pairs: answers,
         feedback: fb,
         duration_min: durationMin,
-      }).catch(() => {}) // non-fatal
+      }).catch(() => null) // non-fatal
 
       setFeedback(fb)
       setHistCount(c => c + 1)
+      // Give the report a URL that survives a refresh once it's saved
+      if (saved) navigate(`/feedback/${uid}`, { replace: true })
     } catch (e) {
       setFeedbackError(errorMessage(e))
     }
@@ -71,7 +95,7 @@ export default function App() {
     dispatch({ type: 'END_SESSION' })
     setQaPairs(answers)
     setFeedback(null)
-    setTab('feedback')
+    navigate('/feedback')
     await requestFeedback(answers)
   }
 
@@ -80,7 +104,13 @@ export default function App() {
     setFeedback(null)
     setFeedbackError(null)
     setQaPairs([])
-    setTab('setup')
+    navigate('/')
+  }
+
+  const feedbackActions = {
+    onPracticeAgain: handlePracticeAgain,
+    onRoadmap: () => navigate('/roadmap'),
+    onHistory: () => navigate('/history'),
   }
 
   return (
@@ -103,31 +133,36 @@ export default function App() {
       {/* Nav */}
       <nav className="nav">
         {TABS.map(t => (
-          <button
-            key={t.id}
-            className={`nav-tab ${tab === t.id ? 'active' : ''}`}
-            onClick={() => goTab(t.id)}
+          <NavLink
+            key={t.path}
+            to={t.path}
+            end={t.path === '/'}
+            className={({ isActive }) => `nav-tab ${isActive ? 'active' : ''}`}
           >
             {t.label}
-            {t.id === 'history' && histCount > 0 && <span className="nav-badge">{histCount}</span>}
-          </button>
+            {t.path === '/history' && histCount > 0 && <span className="nav-badge">{histCount}</span>}
+          </NavLink>
         ))}
       </nav>
 
       {/* Pages */}
-      {tab === 'setup'     && <SetupPage onStartInterview={handleStartInterview} />}
-      {tab === 'interview' && state.session.active && state.session.questions.length > 0
-        ? <InterviewPage onEnd={handleInterviewEnd} />
-        : tab === 'interview' && (
-            <div className="page"><div className="page-inner empty-state">
-              <div className="empty-icon">💬</div>
-              Go to Setup to start an interview.
-            </div></div>
-          )
-      }
-      {tab === 'feedback'  && <FeedbackPage feedback={feedback} error={feedbackError} onRetry={() => requestFeedback(qaPairs)} qaPairs={qaPairs} onPracticeAgain={handlePracticeAgain} onRoadmap={() => goTab('roadmap')} onHistory={() => goTab('history')} />}
-      {tab === 'history'   && <HistoryPage />}
-      {tab === 'roadmap'   && <RoadmapPage />}
+      <Routes>
+        <Route path="/" element={<SetupPage onStartInterview={() => navigate('/interview')} />} />
+        <Route path="/interview" element={
+          state.session.active && state.session.questions.length > 0
+            ? <InterviewPage onEnd={handleInterviewEnd} />
+            : <EmptyPage icon="💬">Go to Setup to start an interview.</EmptyPage>
+        } />
+        <Route path="/feedback" element={
+          <FeedbackPage feedback={feedback} error={feedbackError} onRetry={() => requestFeedback(qaPairs)} qaPairs={qaPairs} {...feedbackActions} />
+        } />
+        <Route path="/feedback/:uid" element={
+          <SavedFeedback current={{ uid: state.session.uid, feedback, qaPairs }} {...feedbackActions} />
+        } />
+        <Route path="/history" element={<HistoryPage />} />
+        <Route path="/roadmap" element={<RoadmapPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   )
 }

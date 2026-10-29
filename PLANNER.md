@@ -51,7 +51,7 @@ The frontend builds cleanly and the backend imports fine. The core loop (setup �
 
 ## 3. Planner
 
-> **Progress:** Phase 0 and Phase 1 are done. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
+> **Progress:** Phases 0, 1 and 2 are done. Phase 1's live check with a real Gemini key is still pending. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
 
 Each phase is something you can ship on its own. Check the boxes as you go.
 
@@ -80,12 +80,13 @@ Each phase is something you can ship on its own. Check the boxes as you go.
 **Done when:** two different answers to the same question get clearly different scores, and the question counter, displayed question and graded question always match.
 
 ### Phase 2: Quality foundation (2 days)
-- [ ] Backend tests with `pytest` + `httpx.AsyncClient`, with the AI service mocked: question parsing, eval fallback, session save, upsert, stats and streak
-- [ ] Frontend tests with Vitest + React Testing Library for the interview flow (answer → next question → end)
-- [ ] Lint and format with `ruff` (Python) and ESLint + Prettier (JS)
-- [ ] GitHub Actions CI to lint, test and build on every push and PR
-- [ ] Use `react-router-dom` for real routes (`/setup`, `/interview/:uid`, `/feedback/:uid`, `/history`, `/roadmap`)
-- [ ] Save in-progress interviews to `localStorage` or the backend so a refresh doesn't lose them
+- [x] Backend tests with `pytest` + FastAPI `TestClient`, with the Gemini client mocked: error mapping, question fallback, score clamping, prompt fencing, feedback indices, session save/upsert/delete, stats and streak (31 tests)
+- [x] Frontend tests with Vitest + React Testing Library for the interview flow: answer → next question → skip → auto-end, evaluation failure, feedback retry, no raw HTML, resume after reload (5 tests)
+- [x] Lint with `ruff` (Python, correctness rules) and ESLint (JS). Formatters (`ruff format`, Prettier) are not enforced yet because they would rewrite the hand-aligned code in every file
+- [x] GitHub Actions CI to lint, test and build on every push to `main` and every PR
+- [x] Real routes with React Router v7: `/`, `/interview`, `/feedback`, `/feedback/:uid` (saved reports, opened from History), `/history`, `/roadmap`
+- [x] Save in-progress interviews to `localStorage` so a refresh doesn't lose them
+- [x] Upgrade the toolchain to Vite 8 / Vitest 5 and `uuid` 14, so `npm audit` reports 0 vulnerabilities
 
 ### Phase 3: Make the interview feel real (3–5 days)
 - [ ] **Adaptive follow-ups.** Each question already has a `followup` field that's never used. After a weak or partial answer, ask the follow-up (or have the AI generate one from the answer) before moving on

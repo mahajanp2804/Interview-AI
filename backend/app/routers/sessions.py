@@ -1,7 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import SessionRecord, get_db
@@ -88,20 +88,25 @@ async def session_stats(db: AsyncSession = Depends(get_db)):
     avg_score = round(sum(scores) / len(scores)) if scores else None
     best_score = round(max(scores)) if scores else None
 
-    # Consecutive calendar days (UTC) with at least one session, ending today
-    days_with_sessions = {r.created_at.date() for r in rows if r.created_at}
-    streak = 0
-    day = datetime.now(timezone.utc).date()
-    while day in days_with_sessions:
-        streak += 1
-        day -= timedelta(days=1)
-
     return {
         "total_sessions": len(rows),
         "avg_score": avg_score,
         "best_score": best_score,
-        "streak": streak,
+        "streak": day_streak(
+            {r.created_at.date() for r in rows if r.created_at},
+            datetime.now(timezone.utc).date(),
+        ),
     }
+
+
+def day_streak(days_with_sessions: set[date], today: date) -> int:
+    """Consecutive calendar days (UTC) with at least one session, ending today."""
+    streak = 0
+    day = today
+    while day in days_with_sessions:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
 
 
 @router.get("/{session_uid}", response_model=SessionDetail)
