@@ -1,7 +1,11 @@
 import asyncio
+import json
+
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 from app import ai_service
+from app.ai_service import AIServiceError
 from app.schemas import (
     GenerateQuestionsRequest,
     EvaluateAnswerRequest,
@@ -30,18 +34,34 @@ async def create_questions(body: GenerateQuestionsRequest):
     return QuestionsResponse(questions=questions, fallback=fallback)
 
 
-@router.post("/evaluate", response_model=EvalResponse)
-async def evaluate(body: EvaluateAnswerRequest):
+def _sse(event: str, data) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post("/evaluate")
+def evaluate(body: EvaluateAnswerRequest):
+    """Server-sent events: `delta` (next piece of the feedback text), then `result` or `error`."""
     cfg = body.config
-    result = await asyncio.to_thread(
-        ai_service.evaluate_answer,
-        body.question,
-        body.question_type,
-        body.answer,
-        cfg.level,
-        cfg.role,
-    )
-    return EvalResponse(**result)
+
+    def events():
+        try:
+            for kind, payload in ai_service.stream_evaluation(
+                body.question,
+                body.question_type,
+                body.answer,
+                cfg.level,
+                cfg.role,
+                hints_used=body.hints_used,
+                parent_question=body.parent_question,
+                parent_answer=body.parent_answer,
+            ):
+                if kind == "result":
+                    payload = EvalResponse(**payload).model_dump()
+                yield _sse(kind, payload)
+        except AIServiceError as e:
+            yield _sse("error", {"detail": str(e)})
+
+    return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @router.post("/feedback", response_model=FeedbackResponse)

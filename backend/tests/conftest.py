@@ -42,6 +42,13 @@ class FakeModels:
             raise self.result
         return self.result
 
+    def generate_content_stream(self, *, model, contents, config):
+        self.calls.append({"model": model, "contents": contents, "config": config})
+        for chunk in self.result:
+            if isinstance(chunk, Exception):
+                raise chunk
+            yield FakeResponse(text=chunk)
+
 
 @pytest.fixture
 def fake_gemini(monkeypatch):

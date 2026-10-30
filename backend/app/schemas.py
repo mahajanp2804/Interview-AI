@@ -25,6 +25,9 @@ class EvaluateAnswerRequest(BaseModel):
     question_hint: str
     answer: str
     config: InterviewConfig
+    hints_used: int = 0
+    parent_question: Optional[str] = None   # set when this answers a follow-up
+    parent_answer: Optional[str] = None
 
 
 class GenerateFeedbackRequest(BaseModel):
@@ -71,6 +74,9 @@ class EvalResponse(BaseModel):
     strengths: List[str]
     improvements: List[str]
     followup_comment: str
+    followup_question: str
+    model_answer: str
+    hint_penalty: int = 0
 
 
 class FeedbackResponse(BaseModel):
