@@ -23,6 +23,9 @@ const initialState = {
     currentQ: 0,
     active: false,
     startTime: null,
+    questionStartedAt: null,
+    followup: null,   // { q, entry }: follow-up being asked, and the answer it follows
+    hintUsed: false,  // for the current question
   },
   // UI
   loading: false,
@@ -35,9 +38,13 @@ function reducer(state, action) {
     case 'SET_CONFIG':
       return { ...state, config: { ...state.config, ...action.payload } }
     case 'START_SESSION':
-      return { ...state, session: { ...initialState.session, uid: action.uid, questions: action.questions, fallback: !!action.fallback, active: true, startTime: Date.now() } }
+      return { ...state, session: { ...initialState.session, uid: action.uid, questions: action.questions, fallback: !!action.fallback, active: true, startTime: Date.now(), questionStartedAt: Date.now() } }
     case 'PUSH_ANSWER':
-      return { ...state, session: { ...state.session, answers: [...state.session.answers, action.answer], scores: [...state.session.scores, action.answer.eval?.score ?? 0], currentQ: state.session.currentQ + 1 } }
+      return { ...state, session: { ...state.session, answers: [...state.session.answers, action.answer], scores: [...state.session.scores, action.answer.eval?.score ?? 0], currentQ: state.session.currentQ + 1, questionStartedAt: Date.now(), followup: null, hintUsed: false } }
+    case 'SET_FOLLOWUP':
+      return { ...state, session: { ...state.session, followup: action.followup } }
+    case 'USE_HINT':
+      return { ...state, session: { ...state.session, hintUsed: true } }
     case 'END_SESSION':
       return { ...state, session: { ...state.session, active: false } }
     case 'SET_LOADING':
