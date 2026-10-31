@@ -11,4 +11,4 @@ pythonpath = ["."]   # so `import app` works when run as plain `pytest`
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI dependency injection uses calls in argument defaults by design
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Query"]

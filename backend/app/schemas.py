@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime, timezone
 
@@ -16,6 +16,9 @@ class InterviewConfig(BaseModel):
 
 class GenerateQuestionsRequest(BaseModel):
     config: InterviewConfig
+    resume_text: Optional[str] = Field(None, max_length=20000)
+    job_description: Optional[str] = Field(None, max_length=10000)
+    focus_areas: List[str] = Field(default_factory=list, max_length=5)
 
 
 class EvaluateAnswerRequest(BaseModel):
@@ -103,6 +106,7 @@ class SessionSummary(BaseModel):
     interview_type: str
     difficulty: str
     company: Optional[str]
+    num_questions: int
     overall_score: Optional[float]
     grade: Optional[str]
     answers_count: int
