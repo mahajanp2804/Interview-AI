@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import Formatted from '../Formatted'
+import { formatTime } from '../format'
 
 const METRICS = [
   { key: 'technical',       name: 'Technical',       icon: '⚙', color: '#4f8ef7' },
@@ -25,6 +27,8 @@ function scoreColor(s) {
 
 function QAItem({ qa, qf, idx }) {
   const [open, setOpen] = useState(false)
+  const [showModel, setShowModel] = useState(false)
+  const modelAnswer = qa.eval?.model_answer
   const verdict = qa.a === '[SKIPPED]' ? 'needs-work' : qf?.verdict ?? 'acceptable'
   const vClass = verdict === 'strong' ? 'verdict-strong' : verdict === 'needs-work' ? 'verdict-needs-work' : 'verdict-acceptable'
   const vLabel = qa.a === '[SKIPPED]' ? 'Skipped ⏭' : verdict === 'strong' ? 'Strong ✅' : verdict === 'needs-work' ? 'Needs Work ⚠' : 'Acceptable ⚡'
@@ -44,12 +48,31 @@ function QAItem({ qa, qf, idx }) {
       {open && (
         <div className="qa-review-body">
           <div className="q-text">{qa.q}</div>
-          <div className="a-text">{qa.a === '[SKIPPED]' ? <em style={{ color: 'var(--accent4)' }}>⏭ Skipped</em> : qa.a}</div>
+          <div className="a-text">{qa.a === '[SKIPPED]' ? <em style={{ color: 'var(--accent4)' }}>⏭ Skipped</em> : <Formatted text={qa.a} />}</div>
+          {qa.followup && (
+            <div className="qa-followup">
+              <div className="q-text">Follow-up: {qa.followup.q}</div>
+              <div className="a-text"><Formatted text={qa.followup.a} /></div>
+              <div className="qa-meta">Follow-up score: {qa.followup.eval?.score ?? '—'}</div>
+            </div>
+          )}
+          <div className="qa-meta">
+            {qa.time_sec != null && <span>⏱ {formatTime(qa.time_sec)}</span>}
+            {qa.hints_used > 0 && <span>💡 Hint used{qa.eval?.hint_penalty ? ` (−${qa.eval.hint_penalty})` : ''}</span>}
+          </div>
           <div className="chip-row">
             {(qa.eval?.strengths ?? []).map((s, i) => <span key={i} className="chip good">✓ {s}</span>)}
             {(qa.eval?.improvements ?? []).map((s, i) => <span key={i} className="chip improve">↗ {s}</span>)}
           </div>
           {qf?.comment && <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text3)', lineHeight: 1.6 }}>{qf.comment}</div>}
+          {modelAnswer && (
+            <div style={{ marginTop: 10 }}>
+              <button className="input-tool" onClick={() => setShowModel(s => !s)} aria-expanded={showModel}>
+                {showModel ? 'Hide' : 'Show'} what a strong answer would include
+              </button>
+              {showModel && <div className="model-answer">{modelAnswer}</div>}
+            </div>
+          )}
         </div>
       )}
     </div>

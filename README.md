@@ -4,10 +4,14 @@ Practice mock interviews with an AI interviewer. Pick a role, level and intervie
 
 ## Features
 
-- **Configurable interviews:** 8 roles (SWE, AI/ML, data science, frontend, backend, full stack, DevOps, PM), 4 experience levels, Technical / Behavioral / Mixed / System Design, Easy–Hard, optional company style, 3–10 questions.
-- **Live evaluation:** every answer is scored on technical depth, communication, clarity, confidence and problem solving, with strengths and improvements.
-- **Hints and skips** during the interview.
-- **Feedback report:** overall score and grade, per-skill scores, prioritised recommendations, and a verdict for each question.
+- **Configurable interviews:** 8 roles (SWE, AI/ML, data science, frontend, backend, full stack, DevOps, PM), 4 experience levels, Technical / Behavioral / Mixed / System Design / Coding, Easy–Hard, optional company style, 3–10 questions.
+- **Live evaluation:** every answer is scored on technical depth, communication, clarity, confidence and problem solving, and the interviewer's feedback streams in as it's written.
+- **Adaptive follow-ups:** a weak answer gets one probing follow-up about its biggest gap. A better follow-up answer lifts that question's score; a worse one never lowers it.
+- **Timers:** each question has a soft countdown (2 min behavioral, 3 technical, 5 system design, 10 coding) that shows overtime but doesn't stop you. Time taken appears in the report.
+- **Code editor:** coding questions open a syntax-highlighted editor (Python, JavaScript, Java, C++), and any question can switch to it. The AI reviews the code; it isn't run.
+- **Voice:** dictate answers and have questions read aloud, using your browser's speech features.
+- **Hints and skips:** one hint per question, costing 5 points.
+- **Feedback report:** overall score and grade, per-skill scores, prioritised recommendations, a verdict for each question, follow-ups, time taken, and what a strong answer would include.
 - **History:** past sessions with average and best score and a daily streak.
 - **Roadmap:** a 6-phase interview prep checklist.
 
@@ -15,7 +19,7 @@ Practice mock interviews with an AI interviewer. Pick a role, level and intervie
 
 | Layer | Tech |
 |---|---|
-| Frontend | React 18, Vite, Axios |
+| Frontend | React 18, Vite, React Router, CodeMirror, Web Speech API |
 | Backend | FastAPI, SQLAlchemy (async), SQLite |
 | AI | Google Gemini via the [`google-genai`](https://pypi.org/project/google-genai/) SDK, with structured JSON output |
 
@@ -63,7 +67,7 @@ npm run dev
 
 1. **Setup tab:** pick your role, level, type, difficulty, company style and question count.
 2. Click **Start Interview**. Your AI interviewer introduces themselves and asks the first question.
-3. **Type your answers** in the text area (Ctrl/⌘ + Enter to submit quickly).
+3. **Type or dictate your answers** (Ctrl/⌘ + Enter to submit quickly). Use **Code** to answer in the editor.
 4. Use the **sidebar** to watch your live score, see which questions are done, request a hint or skip.
 5. After the last question the interview ends on its own (or click **End & get feedback** at any time), and you're taken to the **Feedback tab**.
 6. Review your scores and recommendations, then check the **Roadmap tab** to plan next steps.
@@ -88,12 +92,12 @@ React (Vite :5173) ──/api proxy──▶ FastAPI (:8000) ──▶ Gemini
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/interview/questions` | Generate questions. Falls back to a built-in bank if Gemini is unavailable (`fallback: true`) |
-| `POST /api/interview/evaluate` | Score one answer |
+| `POST /api/interview/evaluate` | Score one answer. Streams server-sent events: `delta` (feedback text), then `result` or `error` |
 | `POST /api/interview/feedback` | Build the final report |
 | `POST /api/interview/hint` | One-sentence hint |
 | `POST /api/sessions/save`, `GET /api/sessions/`, `GET/DELETE /api/sessions/{uid}`, `GET /api/sessions/stats/summary` | Session history |
 
-If Gemini fails (bad key, rate limit, network), the evaluate, feedback and hint endpoints return **HTTP 503** with a readable `detail`. The UI shows that message and lets you retry. It never invents a score.
+If Gemini fails (bad key, rate limit, network), the feedback and hint endpoints return **HTTP 503** with a readable `detail`, and evaluate sends an `error` event with the same message. The UI shows that message and lets you retry. It never invents a score.
 
 ## Project structure
 
@@ -134,7 +138,9 @@ See [PLANNER.md](PLANNER.md) for the improvement plan.
 - No user accounts yet: everyone using the same backend shares one session history.
 - Roadmap progress is stored in your browser's localStorage, and clearing it resets the checklist.
 - An interview in progress is kept in the browser's localStorage, so it survives a refresh but not a switch to another browser.
-- Coding interviews (live code editor) and resume / job-description based questions are planned. See [PLANNER.md](PLANNER.md).
+- Code answers are reviewed by the AI but not executed.
+- Dictation needs a browser with the Web Speech API (Chrome, Edge, Safari) and your browser may send audio to its speech service. The mic button is hidden where it isn't supported.
+- Resume / job-description based questions are planned. See [PLANNER.md](PLANNER.md).
 
 ## License
 

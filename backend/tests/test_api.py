@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from app import ai_service
@@ -26,17 +27,50 @@ def test_questions_endpoint_reports_fallback(client, monkeypatch):
     assert r.json() == {"questions": [q], "fallback": True}
 
 
-def test_ai_failure_returns_503_with_reason(client, monkeypatch):
-    def fail(*args):
+EVAL_REQUEST = {"session_uid": "u", "question": "Q", "question_type": "technical", "question_hint": "h",
+                "answer": "A", "config": CONFIG}
+
+
+def _events(response):
+    """Parse a server-sent-events body into [(event, data), ...]."""
+    events = []
+    for block in response.text.strip().split("\n\n"):
+        name, data = block.split("\n")
+        events.append((name.removeprefix("event: "), json.loads(data.removeprefix("data: "))))
+    return events
+
+
+def test_evaluate_streams_deltas_then_result(client, monkeypatch):
+    result = {"score": 70, "technical": 70, "communication": 70, "clarity": 70, "confidence": 70,
+              "problem_solving": 70, "feedback": "Good work", "strengths": [], "improvements": [],
+              "followup_comment": "Next.", "followup_question": "Why?", "model_answer": "Key points."}
+
+    def fake_stream(*args, **kwargs):
+        assert kwargs == {"hints_used": 1, "parent_question": "Parent?", "parent_answer": "Earlier"}
+        yield "delta", "Good "
+        yield "delta", "work"
+        yield "result", result
+
+    monkeypatch.setattr(ai_service, "stream_evaluation", fake_stream)
+    r = client.post("/api/interview/evaluate", json={
+        **EVAL_REQUEST, "hints_used": 1, "parent_question": "Parent?", "parent_answer": "Earlier",
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+    assert _events(r) == [("delta", "Good "), ("delta", "work"), ("result", {**result, "hint_penalty": 0})]
+
+
+def test_ai_failure_is_sent_as_error_event(client, monkeypatch):
+    def fail(*args, **kwargs):
+        yield "delta", "Par"
         raise AIServiceError("Gemini rate limit reached. Wait a minute and try again.")
 
-    monkeypatch.setattr(ai_service, "evaluate_answer", fail)
-    r = client.post("/api/interview/evaluate", json={
-        "session_uid": "u", "question": "Q", "question_type": "technical", "question_hint": "h",
-        "answer": "A", "config": CONFIG,
-    })
-    assert r.status_code == 503
-    assert r.json() == {"detail": "Gemini rate limit reached. Wait a minute and try again."}
+    monkeypatch.setattr(ai_service, "stream_evaluation", fail)
+    r = client.post("/api/interview/evaluate", json=EVAL_REQUEST)
+    assert _events(r) == [
+        ("delta", "Par"),
+        ("error", {"detail": "Gemini rate limit reached. Wait a minute and try again."}),
+    ]
 
 
 def test_hint_failure_returns_503(client, monkeypatch):

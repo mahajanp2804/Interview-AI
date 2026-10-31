@@ -51,7 +51,7 @@ The frontend builds cleanly and the backend imports fine. The core loop (setup �
 
 ## 3. Planner
 
-> **Progress:** Phases 0, 1 and 2 are done. Phase 1's live check with a real Gemini key is still pending. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
+> **Progress:** Phases 0, 1, 2 and 3 are done. The live check with a real Gemini key is still pending, and now also covers Phase 3's streaming, follow-ups and model answers. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
 
 Each phase is something you can ship on its own. Check the boxes as you go.
 
@@ -89,13 +89,13 @@ Each phase is something you can ship on its own. Check the boxes as you go.
 - [x] Upgrade the toolchain to Vite 8 / Vitest 5 and `uuid` 14, so `npm audit` reports 0 vulnerabilities
 
 ### Phase 3: Make the interview feel real (3–5 days)
-- [ ] **Adaptive follow-ups.** Each question already has a `followup` field that's never used. After a weak or partial answer, ask the follow-up (or have the AI generate one from the answer) before moving on
-- [ ] **Stream responses** (SSE) so feedback appears token by token instead of behind a spinner
-- [ ] **Voice mode:** speech-to-text input (Web Speech API to start) and spoken questions (text-to-speech)
-- [ ] **Timers:** per-question countdown (e.g. 2 min for behavioral, 5 for system design), with time taken shown in feedback
-- [ ] **Code editor** for coding questions (Monaco), with the AI reviewing the code
-- [ ] **Model answer** reveal after each question: "What a strong answer would include"
-- [ ] Record hint usage and factor it into the score
+- [x] **Adaptive follow-ups.** After an answer scoring under 70, the AI asks one follow-up about the biggest gap in that answer (falling back to the question's stored `followup`). A better follow-up pulls the score up halfway; a worse one can't lower it
+- [x] **Stream responses** (SSE). The per-answer feedback streams word by word. The final report is still generated in one go, behind the loading screen
+- [x] **Voice mode:** dictation (Web Speech API) and questions read aloud (speech synthesis)
+- [x] **Timers:** soft per-question countdown (2 min behavioral, 3 technical, 5 system design, 10 coding) that survives a refresh, with time taken shown in feedback
+- [x] **Code editor** for coding questions, plus a new Coding interview type. Uses CodeMirror instead of Monaco: it's much smaller, needs no CDN and loads on demand. The AI reviews the code but doesn't run it
+- [x] **Model answer** reveal in the report: "What a strong answer would include"
+- [x] Hints limited to one per question, costing 5 points. Hint use is shown in the report and passed to the final assessment
 
 ### Phase 4: Personalisation (3–5 days)
 - [ ] **Resume / JD upload:** parse a PDF resume and/or a pasted job description and generate questions targeted to it (this is the single biggest differentiator)

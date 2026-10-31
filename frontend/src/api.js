@@ -10,7 +10,7 @@ const api = axios.create({
 export function errorMessage(e) {
   const detail = e?.response?.data?.detail
   if (typeof detail === 'string') return detail
-  if (e?.code === 'ECONNABORTED') return 'The request timed out.'
+  if (e?.code === 'ECONNABORTED' || e?.name === 'TimeoutError') return 'The request timed out.'
   if (!e?.response) return 'Could not reach the backend. Is it running on port 8000?'
   return `Request failed (${e.response.status}).`
 }
@@ -21,8 +21,39 @@ export function errorMessage(e) {
 export const generateQuestions = (config) =>
   api.post('/interview/questions', { config }).then(r => r.data)
 
-export const evaluateAnswer = (payload) =>
-  api.post('/interview/evaluate', payload).then(r => r.data)
+// Streams server-sent events: onDelta gets each new piece of the written feedback,
+// and the promise resolves with the full evaluation.
+export async function evaluateAnswer(payload, onDelta) {
+  const response = await fetch('/api/interview/evaluate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(60000),
+  })
+  if (!response.ok) throw { response: { status: response.status } }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    let end
+    while ((end = buffer.indexOf('\n\n')) !== -1) {
+      const [eventLine, dataLine] = buffer.slice(0, end).split('\n')
+      buffer = buffer.slice(end + 2)
+      const event = eventLine.replace('event: ', '')
+      const data = JSON.parse(dataLine.replace('data: ', ''))
+
+      if (event === 'delta') onDelta?.(data)
+      if (event === 'result') return data
+      if (event === 'error') throw { response: { status: 503, data } }
+    }
+  }
+  throw { response: { status: 502, data: { detail: 'The response ended before the evaluation finished.' } } }
+}
 
 export const generateFeedback = (payload) =>
   api.post('/interview/feedback', payload).then(r => r.data)

@@ -14,7 +14,7 @@ const ROLES = [
   ['📋', 'Product Manager'],
 ]
 const LEVELS = ['Intern/Fresher', 'Junior (1-2 yrs)', 'Mid-level (3-5 yrs)', 'Senior (5+ yrs)']
-const TYPES  = ['Technical', 'Behavioral', 'Mixed', 'System Design']
+const TYPES  = ['Technical', 'Behavioral', 'Mixed', 'System Design', 'Coding']
 const COUNTS = [3, 5, 8, 10]
 const COMPANIES = ['FAANG', 'Startup', 'Consulting', 'Custom']
 

@@ -5,13 +5,15 @@ All AI interactions — powered by Google Gemini through the google-genai SDK.
 The model comes from GEMINI_MODEL in .env (default: gemini-2.5-flash).
 Get your key: https://aistudio.google.com -> Get API Key
 """
+import json
 import logging
 import re
-from typing import List, Literal
+from contextlib import contextmanager
+from typing import Iterator, List, Literal
 
 from google import genai
 from google.genai import errors, types
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.config import settings
 
@@ -28,23 +30,25 @@ class AIServiceError(Exception):
 
 class _Question(BaseModel):
     q: str
-    type: Literal["technical", "behavioral", "system-design"]
+    type: Literal["technical", "behavioral", "system-design", "coding"]
     hint: str
     category: str
     followup: str
 
 
 class _Evaluation(BaseModel):
+    feedback: str   # first, so it can be streamed to the candidate as it's written
     score: int
     technical: int
     communication: int
     clarity: int
     confidence: int
     problem_solving: int
-    feedback: str
     strengths: List[str]
     improvements: List[str]
     followup_comment: str
+    followup_question: str
+    model_answer: str
 
 
 class _Recommendation(BaseModel):
@@ -76,12 +80,13 @@ class _Feedback(BaseModel):
 
 SCORE_KEYS = ("technical", "communication", "clarity", "confidence", "problem_solving")
 
+HINT_PENALTY = 5   # points off a question's score for using its hint
+
 
 # ── Internal helpers ─────────────────────────────────────────────
 
-def _generate(prompt: str, *, max_tokens: int, schema=None, system: str | None = None):
-    """Call Gemini. Returns the parsed schema object, or plain text when no schema is given."""
-    config = types.GenerateContentConfig(
+def _config(max_tokens: int, schema=None, system: str | None = None) -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
         temperature=0.7,
         # Generous limit: thinking models spend part of this budget before answering
         max_output_tokens=max_tokens,
@@ -89,10 +94,13 @@ def _generate(prompt: str, *, max_tokens: int, schema=None, system: str | None =
         response_mime_type="application/json" if schema is not None else None,
         response_schema=schema,
     )
+
+
+@contextmanager
+def _gemini_errors():
+    """Turn anything that goes wrong talking to Gemini into an AIServiceError."""
     try:
-        response = client.models.generate_content(
-            model=settings.gemini_model, contents=prompt, config=config,
-        )
+        yield
     except errors.APIError as e:
         logger.warning("Gemini API error %s: %s", e.code, e.message)
         if e.code == 429:
@@ -101,6 +109,15 @@ def _generate(prompt: str, *, max_tokens: int, schema=None, system: str | None =
     except Exception as e:
         logger.exception("Gemini request failed")
         raise AIServiceError("Could not reach the Gemini API.") from e
+
+
+def _generate(prompt: str, *, max_tokens: int, schema=None, system: str | None = None):
+    """Call Gemini. Returns the parsed schema object, or plain text when no schema is given."""
+    with _gemini_errors():
+        response = client.models.generate_content(
+            model=settings.gemini_model, contents=prompt,
+            config=_config(max_tokens, schema, system),
+        )
 
     if schema is None:
         text = (response.text or "").strip()
@@ -112,6 +129,28 @@ def _generate(prompt: str, *, max_tokens: int, schema=None, system: str | None =
         logger.warning("Gemini returned unparseable output: %r", response.text)
         raise AIServiceError("Gemini returned a response that could not be read. Try again.")
     return response.parsed
+
+
+def _partial_json_string(buffer: str, key: str) -> str:
+    """Decode as much of the string value of `key` as has arrived in a partial JSON document."""
+    match = re.search(rf'"{key}"\s*:\s*"', buffer)
+    if not match:
+        return ""
+    start = i = match.end()
+    while i < len(buffer):
+        if buffer[i] == '"':
+            break
+        if buffer[i] == "\\":
+            step = 6 if buffer[i + 1:i + 2] == "u" else 2
+            if i + step > len(buffer):   # escape sequence still arriving
+                break
+            i += step
+        else:
+            i += 1
+    try:
+        return json.loads(f'"{buffer[start:i]}"')
+    except json.JSONDecodeError:
+        return ""
 
 
 def _clamp(n: int) -> int:
@@ -202,6 +241,14 @@ FALLBACK_QUESTIONS = {
 
 DEFAULT_ROLE = "Software Engineer"
 
+FALLBACK_CODING = [
+    {"q": "Write a function that returns the indices of two numbers in a list that add up to a target.", "type": "coding", "hint": "Can you avoid checking every pair?", "category": "Hashing", "followup": "What are the time and space complexities?"},
+    {"q": "Write a function that checks whether a string of brackets ()[]{} is balanced.", "type": "coding", "hint": "Which data structure remembers the most recent opener?", "category": "Stacks", "followup": "How would you report the position of the first error?"},
+    {"q": "Write a function that merges two sorted lists into one sorted list.", "type": "coding", "hint": "Walk both lists at once.", "category": "Two Pointers", "followup": "How would you merge k sorted lists?"},
+    {"q": "Write a function that returns the length of the longest substring without repeating characters.", "type": "coding", "hint": "Think about a sliding window.", "category": "Sliding Window", "followup": "What changes if the input is a stream?"},
+    {"q": "Write a function that reverses a singly linked list.", "type": "coding", "hint": "Track the previous node as you walk.", "category": "Linked Lists", "followup": "Can you do it recursively? What does that cost?"},
+]
+
 
 # ── Question Generation ──────────────────────────────────────────
 
@@ -219,7 +266,7 @@ Difficulty: {difficulty}
 
 For each question provide:
   "q"        : the full question text
-  "type"     : one of "technical", "behavioral", "system-design"
+  "type"     : one of "technical", "behavioral", "system-design", "coding"
   "hint"     : a subtle one-sentence hint (not the answer)
   "category" : topic area e.g. "Algorithms", "Leadership", "System Design"
   "followup" : a natural follow-up probe the interviewer would ask next
@@ -229,6 +276,7 @@ Rules:
 - For "Technical": only technical and system-design questions
 - For "Behavioral": only behavioral questions
 - For "System Design": only system-design questions
+- For "Coding": only "coding" questions the candidate answers by writing a function (self-contained, language-agnostic)
 - Scale complexity appropriately to the difficulty ({difficulty}) and level ({level})
 - Make questions specific and realistic for {role}"""
 
@@ -240,29 +288,36 @@ Rules:
     except AIServiceError as e:
         logger.warning("generate_questions falling back to built-in bank: %s", e)
 
+    if interview_type == "Coding":
+        return FALLBACK_CODING[:num_questions], True
     base = FALLBACK_QUESTIONS.get(role, FALLBACK_QUESTIONS[DEFAULT_ROLE])
     return base[:num_questions], True
 
 
 # ── Answer Evaluation ────────────────────────────────────────────
 
-def evaluate_answer(question: str, question_type: str, answer: str,
-                    level: str, role: str) -> dict:
+def _evaluation_prompt(question: str, question_type: str, answer: str, level: str,
+                       parent_question: str | None, parent_answer: str | None) -> str:
+    context = ""
+    if parent_question:
+        context = (f"This is a follow-up to an earlier question.\nOriginal question: {parent_question}\n"
+                   f"Their original answer:\n{_quote_answer(parent_answer or '')}\n\n")
 
-    system = f"You are a senior {role} interviewer. Evaluate candidate answers strictly but fairly. {ANSWER_IS_DATA}"
-    prompt = f"""Candidate level expected: {level}
+    return f"""Candidate level expected: {level}
 Question type: {question_type}
-Question: {question}
+{context}Question: {question}
 
 {_quote_answer(answer)}
 
-Return scores as integers from 0 to 100:
-- "score": overall score
-- "technical", "communication", "clarity", "confidence", "problem_solving"
+Return:
 - "feedback": 2-3 sentences of direct interviewer feedback in second person
+- "score": overall score, integer 0-100
+- "technical", "communication", "clarity", "confidence", "problem_solving": integers 0-100
 - "strengths": 1-3 short strengths
 - "improvements": 1-3 short, specific improvements
 - "followup_comment": 1 natural sentence transitioning to the next question
+- "followup_question": one probing question about the biggest gap in THIS answer, as a real interviewer would ask it
+- "model_answer": 3-5 short sentences on what a strong answer to the question would include
 
 Scoring guide:
 - 85-100: Exceptional, exceeds expectations for {level}
@@ -273,15 +328,63 @@ Scoring guide:
 
 For behavioral questions, reward STAR structure.
 For technical questions, reward correctness, depth, and edge-case awareness.
+For coding questions, answers are code: reward correctness, complexity, edge cases and readability, and point out bugs.
 If the answer is very short (under 20 words), score it below 50."""
 
-    result = _generate(prompt, max_tokens=4096, schema=_Evaluation, system=system).model_dump()
+
+def _finish_evaluation(evaluation: _Evaluation, hints_used: int) -> dict:
+    result = evaluation.model_dump()
     for key in ("score", *SCORE_KEYS):
         result[key] = _clamp(result[key])
+    result["hint_penalty"] = min(result["score"], HINT_PENALTY * hints_used)
+    result["score"] -= result["hint_penalty"]
     return result
 
 
+def stream_evaluation(question: str, question_type: str, answer: str, level: str, role: str,
+                      hints_used: int = 0, parent_question: str | None = None,
+                      parent_answer: str | None = None) -> Iterator[tuple[str, str | dict]]:
+    """Yields ("delta", text) as the written feedback arrives, then one ("result", evaluation dict)."""
+    system = f"You are a senior {role} interviewer. Evaluate candidate answers strictly but fairly. {ANSWER_IS_DATA}"
+    prompt = _evaluation_prompt(question, question_type, answer, level, parent_question, parent_answer)
+
+    buffer = ""
+    sent = ""
+    with _gemini_errors():
+        chunks = client.models.generate_content_stream(
+            model=settings.gemini_model, contents=prompt,
+            config=_config(4096, _Evaluation, system),
+        )
+        for chunk in chunks:
+            buffer += chunk.text or ""
+            feedback = _partial_json_string(buffer, "feedback")
+            if len(feedback) > len(sent):
+                yield "delta", feedback[len(sent):]
+                sent = feedback
+
+    try:
+        evaluation = _Evaluation.model_validate_json(buffer)
+    except ValidationError as e:
+        logger.warning("Gemini returned unparseable output: %r", buffer)
+        raise AIServiceError("Gemini returned a response that could not be read. Try again.") from e
+    yield "result", _finish_evaluation(evaluation, hints_used)
+
+
 # ── Full Feedback Report ─────────────────────────────────────────
+
+def _transcript_entry(i: int, qa: dict) -> str:
+    lines = [
+        f"Q{i+1} (idx {i}, {qa.get('type', 'technical')}): {qa['q']}",
+        _quote_answer(qa["a"]),
+    ]
+    followup = qa.get("followup")
+    if followup:
+        lines += [f"Follow-up asked: {followup['q']}", _quote_answer(followup["a"])]
+    lines.append(f"Per-answer score: {qa.get('eval', {}).get('score', 'N/A')}")
+    if qa.get("hints_used"):
+        lines.append(f"Hints used: {qa['hints_used']}")
+    return "\n".join(lines)
+
 
 def generate_feedback(role: str, level: str, config: dict,
                       qa_pairs: list) -> dict:
@@ -303,12 +406,7 @@ def generate_feedback(role: str, level: str, config: dict,
             "next_role": "Complete a session to get a readiness assessment.",
         }
 
-    qa_text = "\n\n".join(
-        f"Q{i+1} (idx {i}, {qa.get('type', 'technical')}): {qa['q']}\n"
-        f"{_quote_answer(qa['a'])}\n"
-        f"Per-answer score: {qa.get('eval', {}).get('score', 'N/A')}"
-        for i, qa in answered
-    )
+    qa_text = "\n\n".join(_transcript_entry(i, qa) for i, qa in answered)
     indices = [i for i, _ in answered]
 
     system = f"You are a principal engineer reviewing a complete {role} interview. {ANSWER_IS_DATA}"
@@ -325,7 +423,9 @@ Return:
 - "weak_areas": 1-3 weak areas
 - "recommendations": exactly 3, each with "title", specific actionable "action", and "priority" (high, medium or low)
 - "q_feedback": one entry per question above, using its idx ({indices}), with a verdict (strong, acceptable or needs-work) and a one-sentence comment
-- "next_role": honest one-sentence assessment of what level/role they appear ready for"""
+- "next_role": honest one-sentence assessment of what level/role they appear ready for
+
+Weigh how they responded to follow-ups, and treat needing hints as a small negative."""
 
     result = _generate(prompt, max_tokens=8192, schema=_Feedback, system=system).model_dump()
     for key in ("overall_score", *SCORE_KEYS):
