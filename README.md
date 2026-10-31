@@ -5,6 +5,7 @@ Practice mock interviews with an AI interviewer. Pick a role, level and intervie
 ## Features
 
 - **Configurable interviews:** 8 roles (SWE, AI/ML, data science, frontend, backend, full stack, DevOps, PM), 4 experience levels, Technical / Behavioral / Mixed / System Design / Coding, Easy–Hard, optional company style, 3–10 questions.
+- **Tailored questions:** upload a PDF resume or paste one, add a job description, and questions are written around your experience and the role. Questions you've already had are avoided.
 - **Live evaluation:** every answer is scored on technical depth, communication, clarity, confidence and problem solving, and the interviewer's feedback streams in as it's written.
 - **Adaptive follow-ups:** a weak answer gets one probing follow-up about its biggest gap. A better follow-up answer lifts that question's score; a worse one never lowers it.
 - **Timers:** each question has a soft countdown (2 min behavioral, 3 technical, 5 system design, 10 coding) that shows overtime but doesn't stop you. Time taken appears in the report.
@@ -12,15 +13,16 @@ Practice mock interviews with an AI interviewer. Pick a role, level and intervie
 - **Voice:** dictate answers and have questions read aloud, using your browser's speech features.
 - **Hints and skips:** one hint per question, costing 5 points.
 - **Feedback report:** overall score and grade, per-skill scores, prioritised recommendations, a verdict for each question, follow-ups, time taken, and what a strong answer would include.
-- **History:** past sessions with average and best score and a daily streak.
-- **Roadmap:** a 6-phase interview prep checklist.
+- **History:** past sessions with average and best score and a daily streak. Open any session to reread its full report.
+- **Progress dashboard:** score trend, skills from weakest up, and your weakest topics, with a one-click drill on the three weakest.
+- **Smart roadmap:** a 6-phase prep checklist that recommends a phase from your weakest skill and ticks "complete N sessions" tasks from your real sessions.
 
 ## Tech stack
 
 | Layer | Tech |
 |---|---|
 | Frontend | React 18, Vite, React Router, CodeMirror, Web Speech API |
-| Backend | FastAPI, SQLAlchemy (async), SQLite |
+| Backend | FastAPI, SQLAlchemy (async), SQLite, pypdf |
 | AI | Google Gemini via the [`google-genai`](https://pypi.org/project/google-genai/) SDK, with structured JSON output |
 
 ## Getting started
@@ -65,7 +67,7 @@ npm run dev
 
 ## How to use
 
-1. **Setup tab:** pick your role, level, type, difficulty, company style and question count.
+1. **Setup tab:** pick your role, level, type, difficulty, company style and question count. Optionally add your resume and a job description.
 2. Click **Start Interview**. Your AI interviewer introduces themselves and asks the first question.
 3. **Type or dictate your answers** (Ctrl/⌘ + Enter to submit quickly). Use **Code** to answer in the editor.
 4. Use the **sidebar** to watch your live score, see which questions are done, request a hint or skip.
@@ -91,11 +93,12 @@ React (Vite :5173) ──/api proxy──▶ FastAPI (:8000) ──▶ Gemini
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /api/interview/questions` | Generate questions. Falls back to a built-in bank if Gemini is unavailable (`fallback: true`) |
+| `POST /api/interview/resume` | Extract text from a PDF resume (5 MB limit, first 10 pages). The file isn't kept |
+| `POST /api/interview/questions` | Generate questions, optionally from `resume_text`, `job_description` and `focus_areas`, avoiding recent questions for that role. Falls back to a built-in bank if Gemini is unavailable (`fallback: true`) |
 | `POST /api/interview/evaluate` | Score one answer. Streams server-sent events: `delta` (feedback text), then `result` or `error` |
 | `POST /api/interview/feedback` | Build the final report |
 | `POST /api/interview/hint` | One-sentence hint |
-| `POST /api/sessions/save`, `GET /api/sessions/`, `GET/DELETE /api/sessions/{uid}`, `GET /api/sessions/stats/summary` | Session history |
+| `POST /api/sessions/save`, `GET /api/sessions/`, `GET/DELETE /api/sessions/{uid}`, `GET /api/sessions/stats/summary`, `GET /api/sessions/stats/progress` | Session history and progress |
 
 If Gemini fails (bad key, rate limit, network), the feedback and hint endpoints return **HTTP 503** with a readable `detail`, and evaluate sends an `error` event with the same message. The UI shows that message and lets you retry. It never invents a score.
 
@@ -106,6 +109,7 @@ backend/
   app/
     main.py          FastAPI app, CORS, error handling
     ai_service.py    Gemini prompts, structured output schemas, fallback questions
+    resume.py        PDF resume text extraction
     routers/         interview + sessions endpoints
     database.py      SQLAlchemy model (sessions table)
     schemas.py       request/response models
@@ -113,6 +117,7 @@ backend/
 frontend/
   src/
     pages/           Setup, Interview, Feedback, History, Roadmap
+    ProgressDashboard.jsx  score trend, skills, weakest topics, drill button
     AppContext.jsx   global state (config + active session)
     api.js           API client
     App.test.jsx     Vitest interview-flow tests
@@ -140,7 +145,8 @@ See [PLANNER.md](PLANNER.md) for the improvement plan.
 - An interview in progress is kept in the browser's localStorage, so it survives a refresh but not a switch to another browser.
 - Code answers are reviewed by the AI but not executed.
 - Dictation needs a browser with the Web Speech API (Chrome, Edge, Safari) and your browser may send audio to its speech service. The mic button is hidden where it isn't supported.
-- Resume / job-description based questions are planned. See [PLANNER.md](PLANNER.md).
+- Resume and job description text is sent to Google Gemini to write questions, and isn't saved by this app. Scanned PDFs have no readable text, so paste those instead.
+- "Already seen" questions are tracked per role across the whole database until there are user accounts.
 
 ## License
 
