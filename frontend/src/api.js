@@ -17,9 +17,16 @@ export function errorMessage(e) {
 
 // ── Interview endpoints ──────────────────────────────────
 
-// Resolves to { questions, fallback }
-export const generateQuestions = (config) =>
-  api.post('/interview/questions', { config }).then(r => r.data)
+// Resolves to { questions, fallback }. extras: resume_text, job_description, focus_areas
+export const generateQuestions = (config, extras = {}) =>
+  api.post('/interview/questions', { config, ...extras }).then(r => r.data)
+
+// Resolves to { text, truncated }
+export function uploadResume(file) {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post('/interview/resume', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+}
 
 // Streams server-sent events: onDelta gets each new piece of the written feedback,
 // and the promise resolves with the full evaluation.
@@ -77,5 +84,8 @@ export const deleteSession = (uid) =>
 
 export const getStats = () =>
   api.get('/sessions/stats/summary').then(r => r.data)
+
+export const getProgress = () =>
+  api.get('/sessions/stats/progress').then(r => r.data)
 
 export default api

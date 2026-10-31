@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { listSessions, getStats, deleteSession } from '../api'
+import { listSessions, getStats, getProgress, deleteSession } from '../api'
+import ProgressDashboard from '../ProgressDashboard'
 
 const ROLE_ICONS = {
   'AI/ML Engineer': '🤖', 'Software Engineer': '💻', 'Data Scientist': '📊',
@@ -21,15 +22,17 @@ function scoreColor(s) {
 export default function HistoryPage() {
   const [sessions, setSessions] = useState([])
   const [stats, setStats]       = useState(null)
+  const [progress, setProgress] = useState(null)
   const [loading, setLoading]   = useState(true)
   const navigate = useNavigate()
 
   async function load() {
     setLoading(true)
     try {
-      const [s, st] = await Promise.all([listSessions(), getStats()])
+      const [s, st, p] = await Promise.all([listSessions(), getStats(), getProgress()])
       setSessions(s)
       setStats(st)
+      setProgress(p)
     } catch {
       // backend might be slow — ignore
     }
@@ -55,6 +58,8 @@ export default function HistoryPage() {
           <div className="stat-card"><div className="stat-number" style={{ color: 'var(--accent4)' }}>{stats?.best_score ?? '—'}</div><div className="stat-label">Best Score</div></div>
           <div className="stat-card"><div className="stat-number" style={{ color: 'var(--accent2)' }}>{stats?.streak ?? 0}</div><div className="stat-label">Streak 🔥</div></div>
         </div>
+
+        <ProgressDashboard progress={progress} />
 
         {/* List */}
         {loading ? (
