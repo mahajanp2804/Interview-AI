@@ -51,7 +51,7 @@ The frontend builds cleanly and the backend imports fine. The core loop (setup �
 
 ## 3. Planner
 
-> **Progress:** Phases 0, 1, 2 and 3 are done. The live check with a real Gemini key is still pending, and now also covers Phase 3's streaming, follow-ups and model answers. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
+> **Progress:** Phases 0 to 4 are done. The live check with a real Gemini key is still pending, and now also covers Phase 3's streaming, follow-ups and model answers and Phase 4's tailored questions. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
 
 Each phase is something you can ship on its own. Check the boxes as you go.
 
@@ -98,12 +98,12 @@ Each phase is something you can ship on its own. Check the boxes as you go.
 - [x] Hints limited to one per question, costing 5 points. Hint use is shown in the report and passed to the final assessment
 
 ### Phase 4: Personalisation (3–5 days)
-- [ ] **Resume / JD upload:** parse a PDF resume and/or a pasted job description and generate questions targeted to it (this is the single biggest differentiator)
-- [ ] **Session detail view:** open any past session from History. `GET /sessions/{uid}` already exists but isn't used
-- [ ] **Progress dashboard:** score trend over time, per-metric radar chart, weakest categories
-- [ ] **Smart roadmap:** generate or prioritise roadmap tasks from your weak areas across sessions, and tick "Complete N sessions" tasks automatically
-- [ ] **Weak-area drill mode:** "Practice my 3 weakest categories"
-- [ ] Don't repeat questions you've already seen (store question hashes per user)
+- [x] **Resume / JD upload:** upload a PDF or paste a resume, paste a job description, and questions are generated from them. The text is sent to Gemini but never stored
+- [x] **Session detail view:** open any past session from History (shipped with the routes in Phase 2)
+- [x] **Progress dashboard:** score trend, skills and weakest topics on the History page. Skills use sorted bars instead of the planned radar chart, because bars are easier to compare and can show exact values
+- [x] **Smart roadmap:** recommends and opens a phase based on your weakest skill, and ticks "Complete N sessions" tasks from real sessions. It prioritises the existing tasks rather than generating new ones with AI
+- [x] **Weak-area drill mode:** "Practice my 3 weakest topics" from History or the Roadmap
+- [x] Don't repeat questions you've already seen: the last 10 sessions for a role are passed to the prompt, and the fallback bank uses unseen questions first. This is per role until Phase 5 adds users
 
 ### Phase 5: Users and deployment (3–4 days)
 - [ ] Auth (email magic link or Google OAuth, or an auth service such as Supabase/Clerk), with `user_id` on every session
