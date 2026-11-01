@@ -1,4 +1,4 @@
-.PHONY: install backend frontend build test lint
+.PHONY: install migrate backend frontend build test lint
 
 # One-time setup: Python venv + backend deps, frontend deps, and a local .env
 install:
@@ -6,8 +6,12 @@ install:
 	cd backend && [ -f .env ] || cp .env.example .env
 	cd frontend && npm install
 
+# Bring the database schema up to date
+migrate:
+	cd backend && venv/bin/python -m alembic upgrade head
+
 # API on http://localhost:8000 (docs at /docs)
-backend:
+backend: migrate
 	cd backend && venv/bin/python -m uvicorn app.main:app --reload --port 8000
 
 # UI on http://localhost:5173 (proxies /api to the backend)
