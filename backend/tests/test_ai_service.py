@@ -1,10 +1,13 @@
 import json
+import logging
+from types import SimpleNamespace
 
 import pytest
 from google.genai import errors
 
 from app import ai_service
 from app.ai_service import AIServiceError
+from app.logs import JsonFormatter
 
 from conftest import FakeResponse
 
@@ -33,6 +36,51 @@ def _feedback(**overrides):
                 q_feedback=[], next_role="Mid-level")
     data.update(overrides)
     return ai_service._Feedback(**data)
+
+
+# ── AI call logging ──────────────────────────────────────────────
+
+def test_ai_calls_log_outcome_latency_and_tokens_but_never_content(fake_gemini, caplog):
+    response = FakeResponse(text="Think about hashing.")
+    response.usage_metadata = SimpleNamespace(prompt_token_count=120, candidates_token_count=9)
+    fake_gemini(response)
+
+    with caplog.at_level(logging.INFO, logger="app.ai_service"):
+        ai_service.generate_hint("A very private question?")
+
+    [record] = [r for r in caplog.records if r.message == "ai_call"]
+    assert record.fields["op"] == "hint"
+    assert record.fields["outcome"] == "ok"
+    assert record.fields["input_tokens"] == 120
+    assert record.fields["output_tokens"] == 9
+    assert record.fields["latency_ms"] >= 0
+    assert "private" not in caplog.text
+
+
+def test_failed_ai_calls_log_the_error_code(fake_gemini, caplog):
+    fake_gemini(errors.APIError(429, {"error": {"code": 429, "message": "Quota"}}))
+    with caplog.at_level(logging.INFO, logger="app.ai_service"), pytest.raises(AIServiceError):
+        ai_service.generate_hint("Q")
+    [record] = [r for r in caplog.records if r.message == "ai_call"]
+    assert record.fields["outcome"] == "error_429"
+
+
+def test_streamed_evaluations_log_token_usage(fake_gemini, caplog):
+    fake_gemini(_chunks(EVAL))
+    with caplog.at_level(logging.INFO, logger="app.ai_service"):
+        _evaluate()
+    [record] = [r for r in caplog.records if r.message == "ai_call"]
+    assert record.fields["op"] == "evaluate"
+    assert record.fields["outcome"] == "ok"
+
+
+def test_json_log_format():
+    record = logging.LogRecord("app", logging.INFO, "", 0, "request", None, None)
+    record.fields = {"status": 200}
+    entry = json.loads(JsonFormatter().format(record))
+    assert entry["message"] == "request"
+    assert entry["status"] == 200
+    assert entry["level"] == "INFO"
 
 
 # ── Helpers ──────────────────────────────────────────────────────

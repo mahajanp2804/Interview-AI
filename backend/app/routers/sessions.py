@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import SessionRecord, get_db
+from app.auth import current_user
+from app.database import SessionRecord, User, get_db
 from app.schemas import SaveSessionRequest, SessionSummary, SessionDetail
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -30,7 +31,8 @@ def _to_summary(row: SessionRecord) -> SessionSummary:
 
 
 @router.post("/save")
-async def save_session(body: SaveSessionRequest, db: AsyncSession = Depends(get_db)):
+async def save_session(body: SaveSessionRequest, db: AsyncSession = Depends(get_db),
+                       user: User = Depends(current_user)):
     cfg = body.config
     fb = body.feedback
     answered = [qa for qa in body.qa_pairs if qa.get("a") and qa["a"] != "[SKIPPED]"]
@@ -40,9 +42,13 @@ async def save_session(body: SaveSessionRequest, db: AsyncSession = Depends(get_
     )
     row = result.scalar_one_or_none()
 
+    if row is not None and row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
     if row is None:
         row = SessionRecord(
             session_uid=body.session_uid,
+            user_id=user.id,
             role=cfg.role,
             level=cfg.level,
             interview_type=cfg.interview_type,
@@ -65,17 +71,17 @@ async def save_session(body: SaveSessionRequest, db: AsyncSession = Depends(get_
 
 
 @router.get("/", response_model=list[SessionSummary])
-async def list_sessions(db: AsyncSession = Depends(get_db)):
+async def list_sessions(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     result = await db.execute(
-        select(SessionRecord).order_by(SessionRecord.created_at.desc())
+        select(SessionRecord).where(SessionRecord.user_id == user.id).order_by(SessionRecord.created_at.desc())
     )
     rows = result.scalars().all()
     return [_to_summary(r) for r in rows]
 
 
 @router.get("/stats/summary")
-async def session_stats(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SessionRecord))
+async def session_stats(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    result = await db.execute(select(SessionRecord).where(SessionRecord.user_id == user.id))
     rows = result.scalars().all()
 
     if not rows:
@@ -108,8 +114,10 @@ WEAK_CATEGORIES = 5
 
 
 @router.get("/stats/progress")
-async def session_progress(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(SessionRecord).order_by(SessionRecord.created_at))
+async def session_progress(db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
+    result = await db.execute(
+        select(SessionRecord).where(SessionRecord.user_id == user.id).order_by(SessionRecord.created_at)
+    )
     rows = result.scalars().all()
 
     if not rows:
@@ -165,9 +173,9 @@ def day_streak(days_with_sessions: set[date], today: date) -> int:
 
 
 @router.get("/{session_uid}", response_model=SessionDetail)
-async def get_session(session_uid: str, db: AsyncSession = Depends(get_db)):
+async def get_session(session_uid: str, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     result = await db.execute(
-        select(SessionRecord).where(SessionRecord.session_uid == session_uid)
+        select(SessionRecord).where(SessionRecord.session_uid == session_uid, SessionRecord.user_id == user.id)
     )
     row = result.scalar_one_or_none()
     if row is None:
@@ -180,9 +188,9 @@ async def get_session(session_uid: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/{session_uid}")
-async def delete_session(session_uid: str, db: AsyncSession = Depends(get_db)):
+async def delete_session(session_uid: str, db: AsyncSession = Depends(get_db), user: User = Depends(current_user)):
     result = await db.execute(
-        delete(SessionRecord).where(SessionRecord.session_uid == session_uid)
+        delete(SessionRecord).where(SessionRecord.session_uid == session_uid, SessionRecord.user_id == user.id)
     )
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Session not found")

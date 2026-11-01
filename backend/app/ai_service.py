@@ -8,6 +8,7 @@ Get your key: https://aistudio.google.com -> Get API Key
 import json
 import logging
 import re
+import time
 from contextlib import contextmanager
 from typing import Iterator, List, Literal
 
@@ -97,28 +98,49 @@ def _config(max_tokens: int, schema=None, system: str | None = None) -> types.Ge
     )
 
 
+def _usage(response) -> dict:
+    meta = getattr(response, "usage_metadata", None)
+    if meta is None:
+        return {}
+    return {"input_tokens": meta.prompt_token_count, "output_tokens": meta.candidates_token_count}
+
+
 @contextmanager
-def _gemini_errors():
-    """Turn anything that goes wrong talking to Gemini into an AIServiceError."""
+def _gemini_call(op: str):
+    """Times a Gemini call and logs its outcome, turning any failure into an AIServiceError.
+    Yields a dict for the caller to fill with token usage. Prompts and answers are never logged."""
+    usage = {}
+    started = time.perf_counter()
+
+    def record(outcome: str):
+        latency_ms = round((time.perf_counter() - started) * 1000)
+        logger.info("ai_call", extra={"fields": {
+            "op": op, "model": settings.gemini_model, "outcome": outcome, "latency_ms": latency_ms, **usage,
+        }})
+
     try:
-        yield
+        yield usage
     except errors.APIError as e:
+        record(f"error_{e.code}")
         logger.warning("Gemini API error %s: %s", e.code, e.message)
         if e.code == 429:
             raise AIServiceError("Gemini rate limit reached. Wait a minute and try again.") from e
         raise AIServiceError(f"Gemini API error ({e.code}): {e.message}") from e
     except Exception as e:
+        record("error")
         logger.exception("Gemini request failed")
         raise AIServiceError("Could not reach the Gemini API.") from e
+    record("ok")
 
 
-def _generate(prompt: str, *, max_tokens: int, schema=None, system: str | None = None):
+def _generate(op: str, prompt: str, *, max_tokens: int, schema=None, system: str | None = None):
     """Call Gemini. Returns the parsed schema object, or plain text when no schema is given."""
-    with _gemini_errors():
+    with _gemini_call(op) as usage:
         response = client.models.generate_content(
             model=settings.gemini_model, contents=prompt,
             config=_config(max_tokens, schema, system),
         )
+        usage.update(_usage(response))
 
     if schema is None:
         text = (response.text or "").strip()
@@ -127,7 +149,7 @@ def _generate(prompt: str, *, max_tokens: int, schema=None, system: str | None =
         return text
 
     if response.parsed is None:
-        logger.warning("Gemini returned unparseable output: %r", response.text)
+        logger.warning("Gemini returned unparseable output (%d characters)", len(response.text or ""))
         raise AIServiceError("Gemini returned a response that could not be read. Try again.")
     return response.parsed
 
@@ -319,7 +341,7 @@ Rules:
 {tailoring}"""
 
     try:
-        questions = _generate(prompt.strip(), max_tokens=8192, schema=list[_Question], system=system)
+        questions = _generate("questions", prompt.strip(), max_tokens=8192, schema=list[_Question], system=system)
         if questions:
             return [q.model_dump() for q in questions][:num_questions], False
         logger.warning("Gemini returned no questions; using fallback bank")
@@ -387,12 +409,13 @@ def stream_evaluation(question: str, question_type: str, answer: str, level: str
 
     buffer = ""
     sent = ""
-    with _gemini_errors():
+    with _gemini_call("evaluate") as usage:
         chunks = client.models.generate_content_stream(
             model=settings.gemini_model, contents=prompt,
             config=_config(4096, _Evaluation, system),
         )
         for chunk in chunks:
+            usage.update(_usage(chunk))
             buffer += chunk.text or ""
             feedback = _partial_json_string(buffer, "feedback")
             if len(feedback) > len(sent):
@@ -402,7 +425,7 @@ def stream_evaluation(question: str, question_type: str, answer: str, level: str
     try:
         evaluation = _Evaluation.model_validate_json(buffer)
     except ValidationError as e:
-        logger.warning("Gemini returned unparseable output: %r", buffer)
+        logger.warning("Gemini returned unparseable output (%d characters)", len(buffer))
         raise AIServiceError("Gemini returned a response that could not be read. Try again.") from e
     yield "result", _finish_evaluation(evaluation, hints_used)
 
@@ -464,7 +487,7 @@ Return:
 
 Weigh how they responded to follow-ups, and treat needing hints as a small negative."""
 
-    result = _generate(prompt, max_tokens=8192, schema=_Feedback, system=system).model_dump()
+    result = _generate("feedback", prompt, max_tokens=8192, schema=_Feedback, system=system).model_dump()
     for key in ("overall_score", *SCORE_KEYS):
         result[key] = _clamp(result[key])
     result["grade"] = _grade(result["overall_score"])
@@ -485,4 +508,4 @@ Be concise — one sentence only.
 
 Question: {question}
 Hint:"""
-    return _generate(prompt, max_tokens=1024)
+    return _generate("hint", prompt, max_tokens=1024)
