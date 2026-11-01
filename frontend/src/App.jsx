@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { useApp } from './AppContext'
-import { generateFeedback, saveSession, getSession, errorMessage } from './api'
+import { generateFeedback, saveSession, getSession, getMe, logout, onSignedOut, errorMessage } from './api'
 import LoadingOverlay from './LoadingOverlay'
 import SetupPage    from './pages/SetupPage'
 import InterviewPage from './pages/InterviewPage'
 import FeedbackPage from './pages/FeedbackPage'
 import HistoryPage  from './pages/HistoryPage'
 import RoadmapPage  from './pages/RoadmapPage'
+import AuthPage     from './pages/AuthPage'
+
+const LAST_USER_KEY = 'iai_last_user'
 
 const TABS = [
   { path: '/',          label: '⚙ Setup' },
@@ -49,10 +52,41 @@ function SavedFeedback({ current, ...actions }) {
 export default function App() {
   const { state, dispatch } = useApp()
   const navigate = useNavigate()
+  const [user, setUser]         = useState(undefined)   // undefined while checking, null when signed out
   const [feedback, setFeedback] = useState(null)
   const [feedbackError, setFeedbackError] = useState(null)
   const [qaPairs, setQaPairs]   = useState([])
   const [histCount, setHistCount] = useState(0)
+
+  useEffect(() => {
+    onSignedOut(() => setUser(null))
+    getMe().then(handleSignedIn).catch(() => setUser(null))
+  }, [])  // eslint-disable-line
+
+  function clearInterview() {
+    dispatch({ type: 'RESET_SESSION' })
+    setFeedback(null)
+    setFeedbackError(null)
+    setQaPairs([])
+  }
+
+  function handleSignedIn(account) {
+    // An interview saved in this browser may be someone else's
+    try {
+      if (localStorage.getItem(LAST_USER_KEY) !== String(account.id)) clearInterview()
+      localStorage.setItem(LAST_USER_KEY, String(account.id))
+    } catch {
+      // storage unavailable: nothing was restored from it either
+    }
+    setUser(account)
+  }
+
+  async function handleSignOut() {
+    await logout().catch(() => {})   // signed out locally even if the server can't be reached
+    clearInterview()
+    setUser(null)
+    navigate('/')
+  }
 
   // Generates the report for `answers`; on failure the answers are kept so it can be retried
   async function requestFeedback(answers) {
@@ -100,10 +134,7 @@ export default function App() {
   }
 
   function handlePracticeAgain() {
-    dispatch({ type: 'RESET_SESSION' })
-    setFeedback(null)
-    setFeedbackError(null)
-    setQaPairs([])
+    clearInterview()
     navigate('/')
   }
 
@@ -127,8 +158,17 @@ export default function App() {
         <div className="header-status">
           <div className={`status-dot ${state.statusBusy ? 'busy' : ''}`} />
           <span className="status-text">{state.statusBusy ? 'AI Thinking...' : 'Ready'}</span>
+          {user && (
+            <>
+              <span className="header-user" title={user.email}>{user.email}</span>
+              <button className="input-tool" onClick={handleSignOut}>Sign out</button>
+            </>
+          )}
         </div>
       </header>
+
+      {user === null && <AuthPage onSignedIn={handleSignedIn} />}
+      {user && <>
 
       {/* Nav */}
       <nav className="nav">
@@ -163,6 +203,7 @@ export default function App() {
         <Route path="/roadmap" element={<RoadmapPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </>}
     </div>
   )
 }

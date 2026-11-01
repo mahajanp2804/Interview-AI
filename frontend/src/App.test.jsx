@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AppProvider } from './AppContext'
@@ -16,6 +16,11 @@ vi.mock('./api', async (importOriginal) => {
     ...actual,   // keep errorMessage
     generateQuestions: vi.fn(),
     uploadResume: vi.fn(),
+    getMe: vi.fn(),
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    onSignedOut: vi.fn(),
     getProgress: vi.fn(),
     evaluateAnswer: vi.fn(),
     generateFeedback: vi.fn(),
@@ -52,7 +57,7 @@ const WAIT = { timeout: 4000 }
 const chat = () => document.querySelector('.messages')?.textContent ?? ''
 const count = (text, needle) => text.split(needle).length - 1
 
-function renderApp(path = '/') {
+function mountApp(path = '/') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <AppProvider><App /></AppProvider>
@@ -60,8 +65,15 @@ function renderApp(path = '/') {
   )
 }
 
+// Mounts the app and waits until the signed-in user has loaded
+async function renderApp(path) {
+  const view = mountApp(path)
+  await screen.findByRole('button', { name: 'Sign out' })
+  return view
+}
+
 async function startInterview(user, type) {
-  const view = renderApp()
+  const view = await renderApp()
   await user.click(screen.getByRole('button', { name: /Software Engineer/ }))
   if (type) await user.click(screen.getByRole('button', { name: type }))
   await user.click(screen.getByRole('button', { name: /3 Quick/ }))
@@ -77,8 +89,13 @@ async function answer(user, text) {
   await user.click(screen.getByRole('button', { name: /Send/ }))
 }
 
+const ACCOUNT = { id: 1, email: 'sam@example.com' }
+
 beforeEach(() => {
   vi.resetAllMocks()
+  localStorage.setItem('iai_last_user', '1')
+  api.getMe.mockResolvedValue(ACCOUNT)
+  api.logout.mockResolvedValue()
   api.generateQuestions.mockResolvedValue({ questions: QUESTIONS, fallback: false })
   api.evaluateAnswer.mockImplementation(({ question }) => Promise.resolve(evalFor(question)))
   api.generateFeedback.mockResolvedValue(FEEDBACK)
@@ -175,7 +192,7 @@ describe('interview flow', () => {
 
     // Simulate a page refresh: unmount everything and start again from storage
     view.unmount()
-    renderApp('/interview')
+    await renderApp('/interview')
 
     await waitFor(() => expect(chat()).toContain('Welcome back'), WAIT)
     await waitFor(() => expect(chat()).toContain('Second question?'), WAIT)
@@ -257,7 +274,7 @@ describe('interview flow', () => {
     await waitFor(() => expect(chat()).toContain('Follow-up · Could you expand?'), WAIT)
 
     view.unmount()
-    renderApp('/interview')
+    await renderApp('/interview')
     await waitFor(() => expect(chat()).toContain('Follow-up · Could you expand?'), WAIT)
     expect(chat()).toContain('Welcome back')
   }, 20000)
@@ -406,7 +423,7 @@ describe('feedback report', () => {
         followup: { q: 'Why though?', a: 'Because', eval: { score: 66 } },
       }],
     })
-    renderApp('/feedback/some-uid')
+    await renderApp('/feedback/some-uid')
 
     await user.click(await screen.findByText(/Q1: First question/))
     expect(screen.getByText('Follow-up: Why though?')).toBeTruthy()
@@ -422,7 +439,7 @@ describe('feedback report', () => {
 
 describe('tailoring to a resume and job description', () => {
   async function chooseRole(user) {
-    renderApp()
+    await renderApp()
     await user.click(screen.getByRole('button', { name: /Software Engineer/ }))
   }
 
@@ -485,7 +502,7 @@ const PROGRESS = {
 describe('progress dashboard', () => {
   it('shows trend, skills from weakest up, and weakest topics', async () => {
     api.getProgress.mockResolvedValue(PROGRESS)
-    renderApp('/history')
+    await renderApp('/history')
 
     expect(await screen.findByText('Overall score by session')).toBeTruthy()
     expect(screen.getByRole('img', { name: /from 55 to 71/ })).toBeTruthy()
@@ -495,7 +512,7 @@ describe('progress dashboard', () => {
   })
 
   it('stays out of the way before there is any data', async () => {
-    renderApp('/history')
+    await renderApp('/history')
     await screen.findByText(/No sessions yet/)
     expect(screen.queryByText('Overall score by session')).toBeNull()
   })
@@ -503,7 +520,7 @@ describe('progress dashboard', () => {
   it('starts a drill on the three weakest topics using the latest settings', async () => {
     const user = userEvent.setup()
     api.getProgress.mockResolvedValue(PROGRESS)
-    renderApp('/history')
+    await renderApp('/history')
 
     await user.click(await screen.findByRole('button', { name: /Practice my 3 weakest topics/ }))
 
@@ -519,7 +536,7 @@ describe('smart roadmap', () => {
 
   it('recommends the phase for the weakest skill and opens it', async () => {
     api.getProgress.mockResolvedValue(PROGRESS)
-    renderApp('/roadmap')
+    await renderApp('/roadmap')
 
     expect(await screen.findByText('Recommended next')).toBeTruthy()
     expect(screen.getByText(/Your weakest skill lately is/).textContent).toContain('Clarity')
@@ -532,7 +549,7 @@ describe('smart roadmap', () => {
       session({ difficulty: 'Easy' }), session({ difficulty: 'Easy' }), session({ difficulty: 'Easy', answers_count: 0 }),
       session({ interview_type: 'Behavioral' }),
     ])
-    renderApp('/roadmap')
+    await renderApp('/roadmap')
 
     await user.click(await screen.findByText('Foundation: Interview Mindset'))
     await waitFor(() => expect(screen.getByText('2/2 sessions')).toBeTruthy())
@@ -552,11 +569,98 @@ describe('smart roadmap', () => {
   it('still works as a checklist when the backend is down', async () => {
     const user = userEvent.setup()
     api.listSessions.mockRejectedValue(new Error('down'))
-    renderApp('/roadmap')
+    await renderApp('/roadmap')
 
     await user.click(screen.getByText('Foundation: Interview Mindset'))
     const task = screen.getByText('Practice "Tell me about yourself" — craft a 90-second pitch').closest('.task-item')
     await user.click(task)
     expect(task.className).toContain('done')
   })
+})
+
+describe('accounts', () => {
+  const signedOutError = { response: { status: 401, data: { detail: 'Please sign in.' } } }
+
+  it('shows the sign-in page and nothing else when signed out', async () => {
+    api.getMe.mockRejectedValue(signedOutError)
+    mountApp('/history')
+
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.queryByRole('navigation')).toBeNull()
+    expect(api.listSessions).not.toHaveBeenCalled()
+  })
+
+  it('signs in and opens the app', async () => {
+    const user = userEvent.setup()
+    api.getMe.mockRejectedValue(signedOutError)
+    api.login.mockResolvedValue(ACCOUNT)
+    mountApp()
+
+    await user.type(await screen.findByLabelText('Email'), 'sam@example.com')
+    await user.type(screen.getByLabelText('Password'), 'correct horse')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(api.login).toHaveBeenCalledWith('sam@example.com', 'correct horse')
+    expect(await screen.findByText('sam@example.com')).toBeTruthy()
+    expect(screen.getByRole('navigation')).toBeTruthy()
+  })
+
+  it('shows why sign-in failed and lets you try again', async () => {
+    const user = userEvent.setup()
+    api.getMe.mockRejectedValue(signedOutError)
+    api.login.mockRejectedValue({ response: { status: 401, data: { detail: 'Incorrect email or password.' } } })
+    mountApp()
+
+    await user.type(await screen.findByLabelText('Email'), 'sam@example.com')
+    await user.type(screen.getByLabelText('Password'), 'wrong')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect((await screen.findByRole('alert')).textContent).toBe('Incorrect email or password.')
+    expect(screen.getByRole('button', { name: 'Sign in' }).disabled).toBe(false)
+  })
+
+  it('creates an account', async () => {
+    const user = userEvent.setup()
+    api.getMe.mockRejectedValue(signedOutError)
+    api.register.mockResolvedValue(ACCOUNT)
+    mountApp()
+
+    await user.click(await screen.findByRole('button', { name: /Create an account/ }))
+    await user.type(screen.getByLabelText('Email'), 'sam@example.com')
+    await user.type(screen.getByLabelText('Password'), 'correct horse')
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(api.register).toHaveBeenCalledWith('sam@example.com', 'correct horse')
+    expect(await screen.findByRole('button', { name: 'Sign out' })).toBeTruthy()
+  })
+
+  it('signing out ends the session and clears the interview', async () => {
+    const user = userEvent.setup()
+    await startInterview(user)
+    expect(localStorage.getItem('iai_active_session')).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    expect(api.logout).toHaveBeenCalled()
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy()
+    await waitFor(() => expect(localStorage.getItem('iai_active_session')).toBeNull())
+  }, 20000)
+
+  it('goes back to sign-in when the session expires mid-use', async () => {
+    await renderApp()
+    act(() => api.onSignedOut.mock.calls[0][0]())
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy()
+  })
+
+  it("doesn't resume an interview saved by a different account in this browser", async () => {
+    const user = userEvent.setup()
+    const view = await startInterview(user)
+    await waitFor(() => expect(localStorage.getItem('iai_active_session')).toBeTruthy())
+
+    view.unmount()
+    api.getMe.mockResolvedValue({ id: 2, email: 'other@example.com' })
+    await renderApp('/interview')
+
+    expect(await screen.findByText('Go to Setup to start an interview.')).toBeTruthy()
+  }, 20000)
 })

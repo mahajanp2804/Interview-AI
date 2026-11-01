@@ -54,6 +54,14 @@ describe('evaluateAnswer', () => {
     expect(errorMessage(error)).toBe('The response ended before the evaluation finished.')
   })
 
+  it('passes along the reason from a rate limit', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: 'Too many requests.' }), { status: 429 }),
+    ))
+    const error = await evaluateAnswer({}).catch(e => e)
+    expect(errorMessage(error)).toBe('Too many requests.')
+  })
+
   it('rejects on an HTTP error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('nope', { status: 500 })))
     const error = await evaluateAnswer({}).catch(e => e)
