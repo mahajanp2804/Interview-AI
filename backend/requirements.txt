@@ -1,6 +1,7 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 google-genai>=2.33,<3
+pypdf>=6.21,<7
 python-dotenv==1.0.1
 sqlalchemy>=2.0.36,<3
 greenlet>=3.0.0

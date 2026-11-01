@@ -418,3 +418,48 @@ textarea, input { font-family: inherit; }
 
 .start-section { padding: 0 24px 24px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .config-summary { font-size: 12px; color: var(--text3); line-height: 1.9; }
+
+/* Setup: tailor to you */
+.tailor-section { padding: 0 24px 20px; }
+.tailor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
+.tailor-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; margin-bottom: 6px; font-size: 12px; color: var(--text2); }
+.tailor-upload { cursor: pointer; }
+.tailor-text { display: block; width: 100%; min-height: 110px; }
+.tailor-note { margin-top: 8px; font-size: 11px; line-height: 1.5; color: var(--text3); }
+.tailor-note.error { color: var(--red); }
+
+/* Progress dashboard */
+.progress-dashboard { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+.progress-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.chart-card { min-width: 0; padding: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; }
+.chart-title { margin-bottom: 12px; font-size: 12px; font-weight: 600; color: var(--text2); }
+.trend-wrap { position: relative; }
+.trend-wrap svg { display: block; touch-action: pan-y; }
+.trend-wrap svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.chart-grid { stroke: var(--border); stroke-width: 1; }
+.chart-axis { fill: var(--text3); font-size: 10px; }
+.chart-value { fill: var(--text); font-size: 12px; font-weight: 600; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: var(--accent); stroke: var(--bg2); stroke-width: 2; }
+.chart-crosshair { stroke: var(--text3); stroke-width: 1; }
+.chart-tooltip {
+  position: absolute; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; pointer-events: none;
+  transform: translateX(-50%); white-space: nowrap; font-size: 11px; color: var(--text3);
+  background: var(--bg4); border: 1px solid var(--border2); border-radius: 8px;
+}
+.chart-tooltip strong { font-size: 14px; color: var(--text); }
+.bar-list { display: flex; flex-direction: column; gap: 10px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 118px) 1fr 26px; align-items: center; gap: 10px; font-size: 12px; }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text2); }
+.bar-track { height: 8px; background: var(--bg3); border-radius: 4px; }
+.bar-fill { display: block; height: 100%; min-width: 2px; background: var(--accent); border-radius: 0 4px 4px 0; transition: filter .15s; }
+.bar-row:hover .bar-fill { filter: brightness(1.2); }
+.bar-value { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* Smart roadmap */
+.focus-panel { margin-bottom: 16px; padding: 16px; background: var(--bg2); border: 1px solid var(--accent); border-radius: 12px; }
+.focus-text { margin-bottom: 12px; font-size: 13px; line-height: 1.6; color: var(--text2); }
+.focus-text strong { color: var(--text); }
+.phase-badge { margin-left: 8px; padding: 2px 8px; font-size: 10px; font-weight: 600; color: var(--accent); background: rgba(79,142,247,.15); border-radius: 10px; white-space: nowrap; }
+.task-item.auto { cursor: default; }
+.task-auto { margin-left: auto; padding-left: 10px; font-size: 11px; color: var(--text3); white-space: nowrap; }

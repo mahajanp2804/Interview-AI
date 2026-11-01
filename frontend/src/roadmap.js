@@ -1,3 +1,5 @@
+// Tasks are plain strings, or { text, auto } when finished sessions can tick them off:
+// auto.count sessions matching its other fields (interview_type, difficulty, num_questions).
 export const ROADMAP = [
   {
     title: 'Foundation: Interview Mindset',
@@ -9,7 +11,7 @@ export const ROADMAP = [
       'Research the company and role before each practice session',
       'Set up a dedicated practice schedule (3× per week minimum)',
       'Record yourself answering questions and review playback',
-      'Complete 2 Easy sessions on the simulator',
+      { text: 'Complete 2 Easy sessions on the simulator', auto: { difficulty: 'Easy', count: 2 } },
     ],
   },
   {
@@ -22,7 +24,7 @@ export const ROADMAP = [
       'Study Trees, Graphs, BFS/DFS traversal',
       'Practice Dynamic Programming patterns (top 20 problems)',
       'Solve 50+ LeetCode Medium problems',
-      'Complete 3 Technical sessions at Medium difficulty',
+      { text: 'Complete 3 Technical sessions at Medium difficulty', auto: { interview_type: 'Technical', difficulty: 'Medium', count: 3 } },
       'Practice coding on a whiteboard without IDE',
       'Study recursion and backtracking patterns',
     ],
@@ -37,7 +39,7 @@ export const ROADMAP = [
       'Understand horizontal vs vertical scaling',
       'Learn caching (Redis), SQL/NoSQL, load balancing',
       'Practice drawing architecture diagrams under time pressure',
-      'Complete 2 System Design sessions',
+      { text: 'Complete 2 System Design sessions', auto: { interview_type: 'System Design', count: 2 } },
       'Read "Designing Data-Intensive Applications" chapters 1–5',
     ],
   },
@@ -50,7 +52,7 @@ export const ROADMAP = [
       "Map your stories to the company's values",
       'Practice "Why this company?" convincingly',
       'Prepare for: biggest weakness, 5-year plan, salary questions',
-      'Complete 3 Behavioral sessions',
+      { text: 'Complete 3 Behavioral sessions', auto: { interview_type: 'Behavioral', count: 3 } },
       'Practice live with a friend or mentor',
       'Work on pace, filler words, confident body language',
     ],
@@ -62,7 +64,7 @@ export const ROADMAP = [
     tasks: [
       'Study the top 20 technical concepts for your role',
       'Review recent papers, frameworks, or tools for the role',
-      'Complete 2 Hard difficulty sessions',
+      { text: 'Complete 2 Hard difficulty sessions', auto: { difficulty: 'Hard', count: 2 } },
       'Study company-specific interview patterns',
       'Build or update a project showing your core skills',
       'Prepare deep-dives on your most impressive past projects',
@@ -74,7 +76,7 @@ export const ROADMAP = [
     color: '#ef4444', bg: 'rgba(239,68,68,.15)',
     duration: 'Week 6–7',
     tasks: [
-      'Complete a full 10-question Hard mock interview',
+      { text: 'Complete a full 10-question Hard mock interview', auto: { difficulty: 'Hard', num_questions: 10, count: 1 } },
       'Review all weak areas from past sessions',
       'Prepare thoughtful questions to ask the interviewer',
       'Prepare salary negotiation talking points',
@@ -84,3 +86,16 @@ export const ROADMAP = [
     ],
   },
 ]
+
+// Which phase helps most with each skill
+export const METRIC_PHASE = { technical: 1, problem_solving: 1, communication: 3, clarity: 3, confidence: 3 }
+
+export const taskText = (task) => task.text ?? task
+
+// { done, count } for tasks that sessions can complete, otherwise null
+export function autoProgress(task, sessions) {
+  if (!task.auto) return null
+  const { count, ...match } = task.auto
+  const done = sessions.filter(s => s.answers_count > 0 && Object.entries(match).every(([k, v]) => s[k] === v)).length
+  return { done: Math.min(done, count), count }
+}

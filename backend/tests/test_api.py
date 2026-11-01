@@ -5,15 +5,17 @@ from app import ai_service
 from app.ai_service import AIServiceError
 from app.routers.sessions import day_streak
 
+from test_resume import make_pdf
+
 CONFIG = {"role": "Software Engineer", "level": "Junior (1-2 yrs)", "interview_type": "Mixed",
           "difficulty": "Easy", "num_questions": 3}
 
 
-def _save(client, uid, score=70, grade="B+", qa_pairs=None):
+def _save(client, uid, score=70, grade="B+", qa_pairs=None, config=None, feedback=None):
     qa_pairs = qa_pairs if qa_pairs is not None else [{"q": "Q1", "a": "an answer"}, {"q": "Q2", "a": "[SKIPPED]"}]
     return client.post("/api/sessions/save", json={
-        "session_uid": uid, "config": CONFIG, "qa_pairs": qa_pairs,
-        "feedback": {"overall_score": score, "grade": grade}, "duration_min": 4,
+        "session_uid": uid, "config": config or CONFIG, "qa_pairs": qa_pairs,
+        "feedback": {"overall_score": score, "grade": grade, **(feedback or {})}, "duration_min": 4,
     })
 
 
@@ -21,10 +23,47 @@ def _save(client, uid, score=70, grade="B+", qa_pairs=None):
 
 def test_questions_endpoint_reports_fallback(client, monkeypatch):
     q = {"q": "Q?", "type": "technical", "hint": "h", "category": "c", "followup": "f"}
-    monkeypatch.setattr(ai_service, "generate_questions", lambda *args: ([q], True))
+    monkeypatch.setattr(ai_service, "generate_questions", lambda *args, **kwargs: ([q], True))
     r = client.post("/api/interview/questions", json={"config": CONFIG})
     assert r.status_code == 200
     assert r.json() == {"questions": [q], "fallback": True}
+
+
+def test_questions_get_personal_context_and_recent_questions_for_the_same_role(client, monkeypatch):
+    _save(client, "s1", qa_pairs=[{"q": "Seen before?", "a": "yes"}, {"q": "Skipped one?", "a": "[SKIPPED]"}])
+    _save(client, "s2", qa_pairs=[{"q": "Other role question?", "a": "yes"}],
+          config={**CONFIG, "role": "Data Scientist"})
+    captured = {}
+
+    def fake(*args, **kwargs):
+        captured.update(kwargs)
+        return [], False
+
+    monkeypatch.setattr(ai_service, "generate_questions", fake)
+    r = client.post("/api/interview/questions", json={
+        "config": CONFIG, "resume_text": "Built APIs", "job_description": "Go role", "focus_areas": ["Caching"],
+    })
+    assert r.status_code == 200
+    assert captured == {"resume_text": "Built APIs", "job_description": "Go role", "focus_areas": ["Caching"],
+                        "seen": ["Seen before?", "Skipped one?"]}
+
+
+def test_oversized_resume_text_is_rejected(client):
+    r = client.post("/api/interview/questions", json={"config": CONFIG, "resume_text": "x" * 20001})
+    assert r.status_code == 422
+
+
+def test_resume_upload_returns_text(client):
+    r = client.post("/api/interview/resume", files={"file": ("cv.pdf", make_pdf("Led a team of five"), "application/pdf")})
+    assert r.status_code == 200
+    assert "Led a team of five" in r.json()["text"]
+    assert r.json()["truncated"] is False
+
+
+def test_resume_upload_rejects_non_pdf_with_reason(client):
+    r = client.post("/api/interview/resume", files={"file": ("cv.txt", b"plain text", "text/plain")})
+    assert r.status_code == 422
+    assert "doesn't look like a PDF" in r.json()["detail"]
 
 
 EVAL_REQUEST = {"session_uid": "u", "question": "Q", "question_type": "technical", "question_hint": "h",
@@ -118,6 +157,39 @@ def test_stats_summary(client):
     _save(client, "s2", score=91)
     stats = client.get("/api/sessions/stats/summary").json()
     assert stats == {"total_sessions": 2, "avg_score": 76, "best_score": 91, "streak": 1}
+
+
+def test_progress_with_no_sessions(client):
+    assert client.get("/api/sessions/stats/progress").json() == {
+        "trend": [], "metrics": {}, "weak_categories": [], "last_config": None,
+    }
+
+
+def test_progress_reports_trend_metrics_and_weakest_categories(client):
+    _save(client, "s1", score=50, feedback={"technical": 40, "clarity": 80}, qa_pairs=[
+        {"q": "Q1", "a": "x", "category": "Caching", "eval": {"score": 30}},
+        {"q": "Q2", "a": "x", "category": "SQL", "eval": {"score": 90}},
+        {"q": "Q3", "a": "[SKIPPED]", "category": "Queues", "eval": {"score": 0}},
+        {"q": "Q4", "a": "x", "eval": {"score": 10}},   # older answers have no category
+    ])
+    _save(client, "s2", score=80, feedback={"technical": 60}, qa_pairs=[
+        {"q": "Q5", "a": "x", "category": "Caching", "eval": {"score": 50}},
+    ], config={**CONFIG, "role": "Data Scientist", "difficulty": "Hard"})
+
+    progress = client.get("/api/sessions/stats/progress").json()
+    assert [(p["session_uid"], p["score"]) for p in progress["trend"]] == [("s1", 50), ("s2", 80)]
+    assert progress["trend"][0]["date"].endswith("+00:00")
+    assert progress["metrics"] == {"technical": 50, "clarity": 80}
+    assert progress["weak_categories"] == [
+        {"category": "Caching", "avg_score": 40, "count": 2},
+        {"category": "SQL", "avg_score": 90, "count": 1},
+    ]
+    assert progress["last_config"] == {"role": "Data Scientist", "level": CONFIG["level"], "difficulty": "Hard"}
+
+
+def test_session_summary_includes_question_count(client):
+    _save(client, "s1")
+    assert client.get("/api/sessions/").json()[0]["num_questions"] == 3
 
 
 def test_day_streak():

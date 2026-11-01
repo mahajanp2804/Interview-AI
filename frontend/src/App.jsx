@@ -147,7 +147,7 @@ export default function App() {
 
       {/* Pages */}
       <Routes>
-        <Route path="/" element={<SetupPage onStartInterview={() => navigate('/interview')} />} />
+        <Route path="/" element={<SetupPage />} />
         <Route path="/interview" element={
           state.session.active && state.session.questions.length > 0
             ? <InterviewPage onEnd={handleInterviewEnd} />

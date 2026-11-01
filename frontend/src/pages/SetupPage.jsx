@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { v4 as uuidv4 } from 'uuid'
 import { useApp } from '../AppContext'
-import { generateQuestions, errorMessage } from '../api'
+import { uploadResume, errorMessage } from '../api'
+import { useStartInterview } from '../useStartInterview'
 
 const ROLES = [
   ['🤖', 'AI/ML Engineer'],
@@ -18,34 +18,42 @@ const TYPES  = ['Technical', 'Behavioral', 'Mixed', 'System Design', 'Coding']
 const COUNTS = [3, 5, 8, 10]
 const COMPANIES = ['FAANG', 'Startup', 'Consulting', 'Custom']
 
-export default function SetupPage({ onStartInterview }) {
+export default function SetupPage() {
   const { state, dispatch } = useApp()
   const { config } = state
+  const startInterview = useStartInterview()
   const [customCompany, setCustomCompany] = useState('')
+  const [resumeText, setResumeText] = useState('')
+  const [jobDescription, setJobDescription] = useState('')
+  const [resumeNote, setResumeNote] = useState(null)   // { text, error }
+  const [uploading, setUploading] = useState(false)
 
   const set = (field, val) => dispatch({ type: 'SET_CONFIG', payload: { [field]: val } })
 
   const canStart = !!config.role
 
-  async function handleStart() {
+  function handleStart() {
     if (!canStart) return
-    const finalCompany = customCompany || config.company
-    dispatch({ type: 'SET_CONFIG', payload: { company: finalCompany } })
-    dispatch({ type: 'SET_LOADING', value: true, msg: 'Generating your interview questions...' })
-    dispatch({ type: 'SET_STATUS_BUSY', value: true })
+    startInterview({ ...config, company: customCompany || config.company }, {
+      resume_text: resumeText.trim() || null,
+      job_description: jobDescription.trim() || null,
+    })
+  }
 
+  async function handleResumeFile(e) {
+    const file = e.target.files[0]
+    e.target.value = ''   // so picking the same file again still fires
+    if (!file) return
+    setUploading(true)
+    setResumeNote(null)
     try {
-      const { questions, fallback } = await generateQuestions({ ...config, company: finalCompany })
-      const uid = uuidv4()
-      dispatch({ type: 'START_SESSION', uid, questions, fallback })
-      dispatch({ type: 'SET_LOADING', value: false })
-      dispatch({ type: 'SET_STATUS_BUSY', value: false })
-      onStartInterview()
-    } catch (e) {
-      dispatch({ type: 'SET_LOADING', value: false })
-      dispatch({ type: 'SET_STATUS_BUSY', value: false })
-      alert(`Couldn't start the interview: ${errorMessage(e)}`)
+      const { text, truncated } = await uploadResume(file)
+      setResumeText(text)
+      setResumeNote({ text: `Read ${file.name}${truncated ? ' (long resume, so only the first part was kept)' : ''}. Edit below if anything looks wrong.` })
+    } catch (err) {
+      setResumeNote({ text: errorMessage(err), error: true })
     }
+    setUploading(false)
   }
 
   return (
@@ -140,6 +148,44 @@ export default function SetupPage({ onStartInterview }) {
               >{n} {n === 3 ? 'Quick' : n === 5 ? 'Standard' : n === 8 ? 'Full Round' : 'Intensive'}</button>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div className="tailor-section">
+        <div className="card">
+          <div className="card-title">Tailor to you (optional)</div>
+          <div className="tailor-grid">
+            <div>
+              <div className="tailor-label">
+                <label htmlFor="resume-text">Your resume</label>
+                <label className="input-tool tailor-upload">
+                  {uploading ? 'Reading...' : '📄 Upload PDF'}
+                  <input type="file" accept="application/pdf,.pdf" onChange={handleResumeFile} disabled={uploading} aria-label="Upload resume PDF" hidden />
+                </label>
+              </div>
+              <textarea
+                id="resume-text"
+                className="answer-input tailor-text"
+                placeholder="Upload a PDF, or paste your resume here..."
+                maxLength={20000}
+                value={resumeText}
+                onChange={e => setResumeText(e.target.value)}
+              />
+              {resumeNote && <div className={`tailor-note ${resumeNote.error ? 'error' : ''}`}>{resumeNote.text}</div>}
+            </div>
+            <div>
+              <div className="tailor-label"><label htmlFor="job-description">Job description</label></div>
+              <textarea
+                id="job-description"
+                className="answer-input tailor-text"
+                placeholder="Paste the job posting here..."
+                maxLength={10000}
+                value={jobDescription}
+                onChange={e => setJobDescription(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="tailor-note">Used to write your questions: this text is sent to Google Gemini and isn't saved.</div>
         </div>
       </div>
 

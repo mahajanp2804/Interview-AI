@@ -206,7 +206,7 @@ export default function InterviewPage({ onEnd }) {
           time_sec: elapsed(),
         }, 1600)
       } else {
-        const entry = { q: q.q, a: answer, eval: ev, type: q.type, hints_used: session.hintUsed ? 1 : 0, time_sec: elapsed() }
+        const entry = { q: q.q, a: answer, eval: ev, type: q.type, category: q.category, hints_used: session.hintUsed ? 1 : 0, time_sec: elapsed() }
         if (nextFollowup) {
           dispatch({ type: 'SET_FOLLOWUP', followup: { q: nextFollowup, entry } })
           setTimeout(() => {
@@ -256,7 +256,7 @@ export default function InterviewPage({ onEnd }) {
       return
     }
     addMsg('ai', "No problem, let's move on. Skipping is noted — in a real interview, always attempt an answer even if uncertain.")
-    recordAndAdvance({ q: q.q, a: '[SKIPPED]', eval: { score: 0, technical: 0, communication: 0, clarity: 0, confidence: 0, problem_solving: 0, feedback: 'Skipped.', strengths: [], improvements: ['Answer every question — skipping scores 0'], followup_comment: '', followup_question: '', model_answer: '' }, type: q.type, time_sec: elapsed() }, 800)
+    recordAndAdvance({ q: q.q, a: '[SKIPPED]', eval: { score: 0, technical: 0, communication: 0, clarity: 0, confidence: 0, problem_solving: 0, feedback: 'Skipped.', strengths: [], improvements: ['Answer every question — skipping scores 0'], followup_comment: '', followup_question: '', model_answer: '' }, type: q.type, category: q.category, time_sec: elapsed() }, 800)
   }
 
   function toggleVoice() {

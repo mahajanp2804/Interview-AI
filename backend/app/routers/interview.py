@@ -1,11 +1,14 @@
 import asyncio
 import json
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import ai_service
+from app import ai_service, resume
 from app.ai_service import AIServiceError
+from app.database import SessionRecord, get_db
 from app.schemas import (
     GenerateQuestionsRequest,
     EvaluateAnswerRequest,
@@ -19,9 +22,33 @@ from app.schemas import (
 router = APIRouter(prefix="/interview", tags=["interview"])
 
 
+RECENT_SESSIONS = 10   # how far back to look for questions not to repeat
+
+
+async def _recent_questions(db: AsyncSession, role: str) -> list[str]:
+    result = await db.execute(
+        select(SessionRecord.qa_data)
+        .where(SessionRecord.role == role)
+        .order_by(SessionRecord.created_at.desc())
+        .limit(RECENT_SESSIONS)
+    )
+    return [qa["q"] for qa_data in result.scalars() for qa in qa_data or [] if qa.get("q")]
+
+
+@router.post("/resume")
+def upload_resume(file: UploadFile = File(...)):
+    """Extract a PDF resume's text. The file isn't kept."""
+    try:
+        text, truncated = resume.extract_text(file.file.read(resume.MAX_BYTES + 1))
+    except resume.ResumeError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    return {"text": text, "truncated": truncated}
+
+
 @router.post("/questions", response_model=QuestionsResponse)
-async def create_questions(body: GenerateQuestionsRequest):
+async def create_questions(body: GenerateQuestionsRequest, db: AsyncSession = Depends(get_db)):
     cfg = body.config
+    seen = await _recent_questions(db, cfg.role)
     questions, fallback = await asyncio.to_thread(
         ai_service.generate_questions,
         cfg.role,
@@ -30,6 +57,10 @@ async def create_questions(body: GenerateQuestionsRequest):
         cfg.difficulty,
         cfg.company,
         cfg.num_questions,
+        resume_text=body.resume_text,
+        job_description=body.job_description,
+        focus_areas=body.focus_areas,
+        seen=seen,
     )
     return QuestionsResponse(questions=questions, fallback=fallback)
 

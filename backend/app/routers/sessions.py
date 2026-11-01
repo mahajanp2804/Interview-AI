@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +20,7 @@ def _to_summary(row: SessionRecord) -> SessionSummary:
         interview_type=row.interview_type,
         difficulty=row.difficulty,
         company=row.company,
+        num_questions=row.num_questions,
         overall_score=row.overall_score,
         grade=row.grade,
         answers_count=row.answers_count,
@@ -97,6 +99,59 @@ async def session_stats(db: AsyncSession = Depends(get_db)):
             datetime.now(timezone.utc).date(),
         ),
     }
+
+
+METRICS = ("technical", "communication", "clarity", "confidence", "problem_solving")
+TREND_SESSIONS = 30
+METRIC_SESSIONS = 10   # skill averages reflect recent form, not all history
+WEAK_CATEGORIES = 5
+
+
+@router.get("/stats/progress")
+async def session_progress(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(SessionRecord).order_by(SessionRecord.created_at))
+    rows = result.scalars().all()
+
+    if not rows:
+        return {"trend": [], "metrics": {}, "weak_categories": [], "last_config": None}
+
+    metrics = {}
+    for metric in METRICS:
+        values = [r.feedback_data[metric] for r in rows[-METRIC_SESSIONS:]
+                  if r.feedback_data and r.feedback_data.get(metric) is not None]
+        if values:
+            metrics[metric] = round(sum(values) / len(values))
+
+    return {
+        "trend": [
+            {
+                "session_uid": r.session_uid,
+                "date": r.created_at.replace(tzinfo=timezone.utc).isoformat(),
+                "score": round(r.overall_score),
+                "role": r.role,
+            }
+            for r in rows[-TREND_SESSIONS:] if r.overall_score is not None
+        ],
+        "metrics": metrics,
+        "weak_categories": weak_categories(rows),
+        "last_config": {"role": rows[-1].role, "level": rows[-1].level, "difficulty": rows[-1].difficulty},
+    }
+
+
+def weak_categories(rows: list[SessionRecord]) -> list[dict]:
+    """Lowest-scoring question categories across answered questions."""
+    scores = defaultdict(list)
+    for row in rows:
+        for qa in row.qa_data or []:
+            score = (qa.get("eval") or {}).get("score")
+            if qa.get("category") and qa.get("a") != "[SKIPPED]" and score is not None:
+                scores[qa["category"]].append(score)
+
+    categories = [
+        {"category": name, "avg_score": round(sum(values) / len(values)), "count": len(values)}
+        for name, values in scores.items()
+    ]
+    return sorted(categories, key=lambda c: c["avg_score"])[:WEAK_CATEGORIES]
 
 
 def day_streak(days_with_sessions: set[date], today: date) -> int:

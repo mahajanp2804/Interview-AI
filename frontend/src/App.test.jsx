@@ -15,6 +15,8 @@ vi.mock('./api', async (importOriginal) => {
   return {
     ...actual,   // keep errorMessage
     generateQuestions: vi.fn(),
+    uploadResume: vi.fn(),
+    getProgress: vi.fn(),
     evaluateAnswer: vi.fn(),
     generateFeedback: vi.fn(),
     saveSession: vi.fn(),
@@ -81,6 +83,9 @@ beforeEach(() => {
   api.evaluateAnswer.mockImplementation(({ question }) => Promise.resolve(evalFor(question)))
   api.generateFeedback.mockResolvedValue(FEEDBACK)
   api.saveSession.mockResolvedValue({ ok: true })
+  api.listSessions.mockResolvedValue([])
+  api.getStats.mockResolvedValue({})
+  api.getProgress.mockResolvedValue({ trend: [], metrics: {}, weak_categories: [], last_config: null })
 })
 
 describe('interview flow', () => {
@@ -203,6 +208,7 @@ describe('interview flow', () => {
     expect(entry.followup).toMatchObject({ q: 'What about collisions?', a: 'A better answer' })
     expect(entry.eval.score).toBe(60)
     expect(entry.time_sec).toEqual(expect.any(Number))
+    expect(entry.category).toBe('c')
   }, 20000)
 
   it('never lets a worse follow-up lower the score, and only follows up once', async () => {
@@ -411,5 +417,146 @@ describe('feedback report', () => {
     expect(screen.queryByText('A strong answer covers X.')).toBeNull()
     await user.click(screen.getByRole('button', { name: /Show what a strong answer/ }))
     expect(screen.getByText('A strong answer covers X.')).toBeTruthy()
+  })
+})
+
+describe('tailoring to a resume and job description', () => {
+  async function chooseRole(user) {
+    renderApp()
+    await user.click(screen.getByRole('button', { name: /Software Engineer/ }))
+  }
+
+  const startButton = () => screen.getByRole('button', { name: /Start Interview/ })
+
+  it('reads an uploaded resume and sends it with the job description', async () => {
+    const user = userEvent.setup()
+    api.uploadResume.mockResolvedValue({ text: 'Built Kafka pipelines', truncated: false })
+    await chooseRole(user)
+
+    const file = new File(['%PDF'], 'cv.pdf', { type: 'application/pdf' })
+    await user.upload(screen.getByLabelText('Upload resume PDF'), file)
+
+    await waitFor(() => expect(screen.getByLabelText('Your resume').value).toBe('Built Kafka pipelines'))
+    expect(screen.getByText(/Read cv.pdf/)).toBeTruthy()
+
+    await user.type(screen.getByLabelText('Job description'), 'Senior Go engineer')
+    await user.click(startButton())
+
+    await waitFor(() => expect(api.generateQuestions).toHaveBeenCalled())
+    expect(api.generateQuestions.mock.calls[0][1]).toEqual({
+      resume_text: 'Built Kafka pipelines', job_description: 'Senior Go engineer',
+    })
+  })
+
+  it('shows why a resume could not be read and leaves the box usable', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    api.uploadResume.mockRejectedValue({ response: { status: 422, data: { detail: 'No text found in that PDF.' } } })
+    await chooseRole(user)
+
+    await user.upload(screen.getByLabelText('Upload resume PDF'), new File(['x'], 'scan.pdf'))
+    expect(await screen.findByText('No text found in that PDF.')).toBeTruthy()
+    expect(screen.getByLabelText('Your resume').disabled).toBe(false)
+  })
+
+  it('sends nothing extra when both boxes are empty', async () => {
+    const user = userEvent.setup()
+    await chooseRole(user)
+    await user.click(startButton())
+    await waitFor(() => expect(api.generateQuestions).toHaveBeenCalled())
+    expect(api.generateQuestions.mock.calls[0][1]).toEqual({ resume_text: null, job_description: null })
+  })
+})
+
+const PROGRESS = {
+  trend: [
+    { session_uid: 'a', date: '2026-10-01T10:00:00+00:00', score: 55, role: 'Software Engineer' },
+    { session_uid: 'b', date: '2026-10-08T10:00:00+00:00', score: 71, role: 'Software Engineer' },
+  ],
+  metrics: { technical: 72, clarity: 58, communication: 80 },
+  weak_categories: [
+    { category: 'Caching', avg_score: 40, count: 3 },
+    { category: 'SQL', avg_score: 55, count: 2 },
+    { category: 'Queues', avg_score: 60, count: 1 },
+    { category: 'Testing', avg_score: 75, count: 1 },
+  ],
+  last_config: { role: 'Data Scientist', level: 'Junior (1-2 yrs)', difficulty: 'Hard' },
+}
+
+describe('progress dashboard', () => {
+  it('shows trend, skills from weakest up, and weakest topics', async () => {
+    api.getProgress.mockResolvedValue(PROGRESS)
+    renderApp('/history')
+
+    expect(await screen.findByText('Overall score by session')).toBeTruthy()
+    expect(screen.getByRole('img', { name: /from 55 to 71/ })).toBeTruthy()
+    expect([...document.querySelectorAll('.chart-card:nth-child(1) .bar-label')].map(e => e.textContent))
+      .toEqual(['Clarity', 'Technical', 'Communication'])
+    expect(screen.getByTitle('Caching: 40')).toBeTruthy()
+  })
+
+  it('stays out of the way before there is any data', async () => {
+    renderApp('/history')
+    await screen.findByText(/No sessions yet/)
+    expect(screen.queryByText('Overall score by session')).toBeNull()
+  })
+
+  it('starts a drill on the three weakest topics using the latest settings', async () => {
+    const user = userEvent.setup()
+    api.getProgress.mockResolvedValue(PROGRESS)
+    renderApp('/history')
+
+    await user.click(await screen.findByRole('button', { name: /Practice my 3 weakest topics/ }))
+
+    await waitFor(() => expect(chat()).toContain('First question?'), WAIT)
+    const [config, extras] = api.generateQuestions.mock.calls[0]
+    expect(config).toMatchObject({ role: 'Data Scientist', difficulty: 'Hard', interview_type: 'Mixed', num_questions: 5 })
+    expect(extras).toEqual({ focus_areas: ['Caching', 'SQL', 'Queues'] })
+  }, 20000)
+})
+
+describe('smart roadmap', () => {
+  const session = (extra) => ({ answers_count: 3, interview_type: 'Mixed', difficulty: 'Medium', num_questions: 5, ...extra })
+
+  it('recommends the phase for the weakest skill and opens it', async () => {
+    api.getProgress.mockResolvedValue(PROGRESS)
+    renderApp('/roadmap')
+
+    expect(await screen.findByText('Recommended next')).toBeTruthy()
+    expect(screen.getByText(/Your weakest skill lately is/).textContent).toContain('Clarity')
+    expect(screen.getByText('Prepare 5 STAR stories: leadership, conflict, failure, success, teamwork')).toBeTruthy()
+  })
+
+  it('ticks session tasks from real sessions, and they cannot be clicked', async () => {
+    const user = userEvent.setup()
+    api.listSessions.mockResolvedValue([
+      session({ difficulty: 'Easy' }), session({ difficulty: 'Easy' }), session({ difficulty: 'Easy', answers_count: 0 }),
+      session({ interview_type: 'Behavioral' }),
+    ])
+    renderApp('/roadmap')
+
+    await user.click(await screen.findByText('Foundation: Interview Mindset'))
+    await waitFor(() => expect(screen.getByText('2/2 sessions')).toBeTruthy())
+    const task = screen.getByText('Complete 2 Easy sessions on the simulator').closest('.task-item')
+    expect(task.className).toContain('done')
+
+    await user.click(screen.getByText('Behavioral Mastery'))
+    const behavioral = screen.getByText('Complete 3 Behavioral sessions').closest('.task-item')
+    expect(behavioral.textContent).toContain('1/3 sessions')
+    expect(behavioral.className).not.toContain('done')
+
+    await user.click(behavioral)
+    expect(behavioral.className).not.toContain('done')
+    expect(document.querySelector('.rm-stat-num').textContent).toBe('1')   // only the Easy task counts as done
+  })
+
+  it('still works as a checklist when the backend is down', async () => {
+    const user = userEvent.setup()
+    api.listSessions.mockRejectedValue(new Error('down'))
+    renderApp('/roadmap')
+
+    await user.click(screen.getByText('Foundation: Interview Mindset'))
+    const task = screen.getByText('Practice "Tell me about yourself" — craft a 90-second pitch').closest('.task-item')
+    await user.click(task)
+    expect(task.className).toContain('done')
   })
 })
