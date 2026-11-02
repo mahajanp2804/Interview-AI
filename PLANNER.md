@@ -118,7 +118,9 @@ Each phase is something you can ship on its own. Check the boxes as you go.
 - [ ] PDF export or a share link for the feedback report
 - [ ] Company-specific question packs and an editable question bank
 - [ ] Peer / mock mode: share an interview link with a friend acting as interviewer
-- [ ] Light/dark theme toggle, mobile layout, accessibility pass (keyboard nav, ARIA on the custom buttons)
+- [x] Light/dark theme toggle: follows the system until chosen, remembered, applied before first paint, and the code editor switches too. The interview screen now fits laptop windows exactly (1024×768 and up), so the answer box is always visible
+- [ ] Mobile layout for the interview screen (laptop only for now)
+- [ ] Accessibility pass (keyboard nav, ARIA on the custom buttons, contrast of muted text in the dark theme)
 - [ ] Multi-provider AI (Gemini / Claude / OpenAI) behind one interface
 
 ## 4. Suggested order

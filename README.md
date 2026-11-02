@@ -16,6 +16,7 @@ Practice mock interviews with an AI interviewer. Pick a role, level and intervie
 - **Feedback report:** overall score and grade, per-skill scores, prioritised recommendations, a verdict for each question, follow-ups, time taken, and what a strong answer would include.
 - **History:** past sessions with average and best score and a daily streak. Open any session to reread its full report.
 - **Progress dashboard:** score trend, skills from weakest up, and your weakest topics, with a one-click drill on the three weakest.
+- **Light and dark themes:** follows your system setting until you pick one with the toggle in the header, which is remembered.
 - **Smart roadmap:** a 6-phase prep checklist that recommends a phase from your weakest skill and ticks "complete N sessions" tasks from your real sessions.
 
 ## Tech stack
