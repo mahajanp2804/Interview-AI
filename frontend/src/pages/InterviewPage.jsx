@@ -281,7 +281,7 @@ export default function InterviewPage({ onEnd }) {
   const canSend = !sending && !!(codeMode ? code.trim() : input.trim())
 
   return (
-    <div className="page" style={{ height: 'calc(100vh - 96px)' }}>
+    <div className="page interview-page">
       <div className="interview-layout">
         {/* ── Chat area ── */}
         <div className="chat-area">
@@ -381,7 +381,7 @@ export default function InterviewPage({ onEnd }) {
                 <div className="ring-center">{avgScore ?? '—'}</div>
               </div>
               <div className="score-bars">
-                {[['Technical','#4f8ef7', liveScores.technical],['Comm.','#10b981',liveScores.communication],['Clarity','#f59e0b',liveScores.clarity],['Confid.','#7c3aed',liveScores.confidence]].map(([label, color, val]) => (
+                {[['Technical','var(--accent)', liveScores.technical],['Comm.','var(--accent3)',liveScores.communication],['Clarity','var(--accent4)',liveScores.clarity],['Confid.','var(--accent2)',liveScores.confidence]].map(([label, color, val]) => (
                   <div key={label} className="score-row">
                     <span className="score-row-label">{label}</span>
                     <div className="mini-bar"><div className="mini-fill" style={{ width: val + '%', background: color }} /></div>
