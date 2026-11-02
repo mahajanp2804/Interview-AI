@@ -6,10 +6,12 @@ import { python } from '@codemirror/lang-python'
 import { javascript } from '@codemirror/lang-javascript'
 import { java } from '@codemirror/lang-java'
 import { cpp } from '@codemirror/lang-cpp'
+import { useTheme } from './theme'
 
 const LANGUAGES = { python, javascript, java, cpp }
 
 export default function CodeEditor({ value, onChange, language, onSubmit, disabled }) {
+  const theme = useTheme()
   const submit = useRef(onSubmit)
   submit.current = onSubmit
 
@@ -23,7 +25,7 @@ export default function CodeEditor({ value, onChange, language, onSubmit, disabl
       value={value}
       onChange={onChange}
       extensions={extensions}
-      theme="dark"
+      theme={theme}
       editable={!disabled}
       minHeight="140px"
       maxHeight="280px"

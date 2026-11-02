@@ -9,6 +9,7 @@ import FeedbackPage from './pages/FeedbackPage'
 import HistoryPage  from './pages/HistoryPage'
 import RoadmapPage  from './pages/RoadmapPage'
 import AuthPage     from './pages/AuthPage'
+import { setTheme, useTheme } from './theme'
 
 const LAST_USER_KEY = 'iai_last_user'
 
@@ -19,6 +20,16 @@ const TABS = [
   { path: '/history',   label: '📁 History' },
   { path: '/roadmap',   label: '🗺 Roadmap' },
 ]
+
+function ThemeToggle() {
+  const theme = useTheme()
+  const next = theme === 'dark' ? 'light' : 'dark'
+  return (
+    <button className="input-tool theme-toggle" onClick={() => setTheme(next)} aria-label={`Switch to ${next} theme`} title={`Switch to ${next} theme`}>
+      {theme === 'dark' ? '☀ Light' : '☾ Dark'}
+    </button>
+  )
+}
 
 function EmptyPage({ icon, children }) {
   return (
@@ -158,6 +169,7 @@ export default function App() {
         <div className="header-status">
           <div className={`status-dot ${state.statusBusy ? 'busy' : ''}`} />
           <span className="status-text">{state.statusBusy ? 'AI Thinking...' : 'Ready'}</span>
+          <ThemeToggle />
           {user && (
             <>
               <span className="header-user" title={user.email}>{user.email}</span>

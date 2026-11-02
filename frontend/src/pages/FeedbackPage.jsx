@@ -3,11 +3,11 @@ import Formatted from '../Formatted'
 import { formatTime } from '../format'
 
 const METRICS = [
-  { key: 'technical',       name: 'Technical',       icon: '⚙', color: '#4f8ef7' },
-  { key: 'communication',   name: 'Communication',    icon: '💬', color: '#10b981' },
-  { key: 'clarity',         name: 'Clarity',          icon: '🔍', color: '#f59e0b' },
-  { key: 'confidence',      name: 'Confidence',       icon: '💪', color: '#7c3aed' },
-  { key: 'problem_solving', name: 'Problem Solving',  icon: '🧩', color: '#ec4899' },
+  { key: 'technical',       name: 'Technical',       icon: '⚙', color: 'var(--accent)' },
+  { key: 'communication',   name: 'Communication',    icon: '💬', color: 'var(--accent3)' },
+  { key: 'clarity',         name: 'Clarity',          icon: '🔍', color: 'var(--accent4)' },
+  { key: 'confidence',      name: 'Confidence',       icon: '💪', color: 'var(--accent2)' },
+  { key: 'problem_solving', name: 'Problem Solving',  icon: '🧩', color: 'var(--accent5)' },
 ]
 
 function gradeClass(grade) {

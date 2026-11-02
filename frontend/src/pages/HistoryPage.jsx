@@ -8,8 +8,8 @@ const ROLE_ICONS = {
   'Frontend Developer': '🎨', 'Backend Developer': '⚙', 'Full Stack Developer': '🔥',
   'DevOps Engineer': '🚀', 'Product Manager': '📋',
 }
-const ICON_COLORS = ['#4f8ef7','#10b981','#f59e0b','#7c3aed','#ec4899']
-const BG_COLORS   = ['rgba(79,142,247,.15)','rgba(16,185,129,.15)','rgba(245,158,11,.15)','rgba(124,58,237,.15)','rgba(236,72,153,.15)']
+const ICON_COLORS = ['--accent', '--accent3', '--accent4', '--accent2', '--accent5'].map(v => `var(${v})`)
+const BG_COLORS   = ICON_COLORS.map(c => `color-mix(in srgb, ${c} 15%, transparent)`)
 
 function scoreColor(s) {
   if (!s) return 'var(--text3)'

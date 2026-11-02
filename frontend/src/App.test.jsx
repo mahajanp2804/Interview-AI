@@ -664,3 +664,36 @@ describe('accounts', () => {
     expect(await screen.findByText('Go to Setup to start an interview.')).toBeTruthy()
   }, 20000)
 })
+
+describe('theme', () => {
+  it('switches between dark and light and remembers the choice', async () => {
+    const user = userEvent.setup()
+    await renderApp()
+
+    await user.click(screen.getByRole('button', { name: 'Switch to light theme' }))
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(localStorage.getItem('iai_theme')).toBe('light')
+
+    await user.click(screen.getByRole('button', { name: 'Switch to dark theme' }))
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem('iai_theme')).toBe('dark')
+  })
+
+  it('starts from the system setting when nothing was chosen', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+    try {
+      await renderApp()
+      expect(screen.getByRole('button', { name: 'Switch to dark theme' })).toBeTruthy()
+      expect(document.documentElement.dataset.theme).toBeUndefined()
+    } finally {
+      delete window.matchMedia
+    }
+  })
+
+  it('is available on the sign-in page', async () => {
+    api.getMe.mockRejectedValue({ response: { status: 401 } })
+    mountApp()
+    await screen.findByRole('heading', { name: 'Sign in' })
+    expect(screen.getByRole('button', { name: /Switch to (light|dark) theme/ })).toBeTruthy()
+  })
+})

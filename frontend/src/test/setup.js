@@ -7,4 +7,5 @@ Element.prototype.scrollIntoView = () => {}
 afterEach(() => {
   cleanup()
   localStorage.clear()
+  delete document.documentElement.dataset.theme
 })

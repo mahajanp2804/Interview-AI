@@ -3,7 +3,7 @@
 export const ROADMAP = [
   {
     title: 'Foundation: Interview Mindset',
-    color: '#4f8ef7', bg: 'rgba(79,142,247,.15)',
+    color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 15%, transparent)',
     duration: 'Week 1',
     tasks: [
       'Understand the STAR method (Situation, Task, Action, Result)',
@@ -16,7 +16,7 @@ export const ROADMAP = [
   },
   {
     title: 'Technical Core: Data Structures & Algorithms',
-    color: '#10b981', bg: 'rgba(16,185,129,.15)',
+    color: 'var(--accent3)', bg: 'color-mix(in srgb, var(--accent3) 15%, transparent)',
     duration: 'Weeks 2–4',
     tasks: [
       'Review Big-O notation and complexity analysis',
@@ -31,7 +31,7 @@ export const ROADMAP = [
   },
   {
     title: 'System Design & Architecture',
-    color: '#f59e0b', bg: 'rgba(245,158,11,.15)',
+    color: 'var(--accent4)', bg: 'color-mix(in srgb, var(--accent4) 15%, transparent)',
     duration: 'Weeks 3–5',
     tasks: [
       'Study CAP theorem, consistency models, distributed systems',
@@ -45,7 +45,7 @@ export const ROADMAP = [
   },
   {
     title: 'Behavioral Mastery',
-    color: '#7c3aed', bg: 'rgba(124,58,237,.15)',
+    color: 'var(--accent2)', bg: 'color-mix(in srgb, var(--accent2) 15%, transparent)',
     duration: 'Weeks 4–5',
     tasks: [
       'Prepare 5 STAR stories: leadership, conflict, failure, success, teamwork',
@@ -59,7 +59,7 @@ export const ROADMAP = [
   },
   {
     title: 'Role-Specific Deep Dive',
-    color: '#ec4899', bg: 'rgba(236,72,153,.15)',
+    color: 'var(--accent5)', bg: 'color-mix(in srgb, var(--accent5) 15%, transparent)',
     duration: 'Weeks 5–6',
     tasks: [
       'Study the top 20 technical concepts for your role',
@@ -73,7 +73,7 @@ export const ROADMAP = [
   },
   {
     title: 'Final Prep & Polish',
-    color: '#ef4444', bg: 'rgba(239,68,68,.15)',
+    color: 'var(--red)', bg: 'color-mix(in srgb, var(--red) 15%, transparent)',
     duration: 'Week 6–7',
     tasks: [
       { text: 'Complete a full 10-question Hard mock interview', auto: { difficulty: 'Hard', num_questions: 10, count: 1 } },
