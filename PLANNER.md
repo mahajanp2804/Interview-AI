@@ -51,7 +51,7 @@ The frontend builds cleanly and the backend imports fine. The core loop (setup â
 
 ## 3. Planner
 
-> **Progress:** Phases 0 to 4 are done. The live check with a real Gemini key is still pending, and now also covers Phase 3's streaming, follow-ups and model answers and Phase 4's tailored questions. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
+> **Progress:** Phases 0 to 4 are done, and so is Phase 5 apart from deployment and password reset. The live check with a real Gemini key is still pending, and now also covers Phase 3's streaming, follow-ups and model answers and Phase 4's tailored questions. Also fixed: feedback verdicts were matched to the wrong questions when one was skipped, the welcome message appeared twice in dev, and switching tabs mid-interview restarted at Q1.
 
 Each phase is something you can ship on its own. Check the boxes as you go.
 
@@ -106,12 +106,13 @@ Each phase is something you can ship on its own. Check the boxes as you go.
 - [x] Don't repeat questions you've already seen: the last 10 sessions for a role are passed to the prompt, and the fallback bank uses unseen questions first. This is per role until Phase 5 adds users
 
 ### Phase 5: Users and deployment (3â€“4 days)
-- [ ] Auth (email magic link or Google OAuth, or an auth service such as Supabase/Clerk), with `user_id` on every session
-- [ ] Move from SQLite to Postgres and add Alembic migrations
-- [ ] Rate limiting per user/IP (`slowapi`) and request size limits on answers
-- [ ] Dockerfile + `docker-compose.yml`
-- [ ] Deploy the frontend (Vercel/Netlify) and backend (Render/Railway/Fly.io), with secrets in the platform env
-- [ ] Basic observability: structured logs, AI latency, error rate, token usage
+- [x] Auth: email + password with Argon2 hashing and httpOnly session cookies, with `user_id` on every session. The first account adopts sessions from before accounts existed
+- [x] Postgres support and Alembic migrations (SQLite still works for local development)
+- [x] Rate limiting per user and per IP (`slowapi`), plus request size limits on answers and uploads
+- [x] Dockerfile + `docker-compose.yml`, with nginx serving the app and CI booting the whole stack
+- [ ] Deploy the frontend and backend, with secrets in the platform env. Held back on purpose: choose a host first. The Docker setup runs on any of them
+- [x] Basic observability: structured JSON logs with request timing, AI latency, outcome and token usage
+- [ ] Password reset by email (needs an email service)
 
 ### Phase 6: Nice-to-haves
 - [ ] PDF export or a share link for the feedback report

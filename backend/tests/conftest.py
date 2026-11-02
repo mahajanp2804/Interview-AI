@@ -1,26 +1,53 @@
 import os
 import tempfile
+import uuid
 from types import SimpleNamespace
 
 # Must be set before the app is imported: settings and the DB engine are created at import time.
-# Real environment variables take priority over backend/.env.
+# Real environment variables take priority over backend/.env. CI sets TEST_DATABASE_URL to run on Postgres.
 _tmpdir = tempfile.mkdtemp(prefix="interviewai-tests-")
 os.environ["GEMINI_API_KEY"] = "test-key"
-os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_tmpdir}/test.db"
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", f"sqlite+aiosqlite:///{_tmpdir}/test.db")
+os.environ["RATE_LIMITS_ENABLED"] = "false"
+os.environ["DB_NULL_POOL"] = "true"
 
 import pytest  # noqa: E402
+from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
+
+ALEMBIC = Config("alembic.ini")
+command.upgrade(ALEMBIC, "head")
+
+
+def make_client():
+    from app.main import app
+
+    return TestClient(app)
+
+
+def sign_up(client):
+    email = f"{uuid.uuid4().hex}@example.com"
+    response = client.post("/api/auth/register", json={"email": email, "password": "correct horse"})
+    assert response.status_code == 201
+    return email
+
+
+@pytest.fixture
+def anon():
+    """A client that isn't signed in."""
+    with make_client() as c:
+        yield c
 
 
 @pytest.fixture
 def client():
-    from app.main import app
-
-    with TestClient(app) as c:
-        # Start every test with an empty sessions table
+    """A client signed in as a brand new user."""
+    with make_client() as c:
+        sign_up(c)
+        yield c
         for s in c.get("/api/sessions/").json():
             c.delete(f"/api/sessions/{s['session_uid']}")
-        yield c
 
 
 class FakeResponse:

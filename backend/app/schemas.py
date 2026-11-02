@@ -1,9 +1,24 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime, timezone
 
 
+MAX_QUESTION = 2000
+MAX_ANSWER = 20000
+MAX_QA_PAIRS = 30
+
+
 # ── Request Bodies ───────────────────────────────────────────────
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(max_length=128)
+
 
 class InterviewConfig(BaseModel):
     role: str
@@ -23,35 +38,42 @@ class GenerateQuestionsRequest(BaseModel):
 
 class EvaluateAnswerRequest(BaseModel):
     session_uid: str
-    question: str
+    question: str = Field(max_length=MAX_QUESTION)
     question_type: str
     question_hint: str
-    answer: str
+    answer: str = Field(max_length=MAX_ANSWER)
     config: InterviewConfig
     hints_used: int = 0
-    parent_question: Optional[str] = None   # set when this answers a follow-up
-    parent_answer: Optional[str] = None
+    parent_question: Optional[str] = Field(None, max_length=MAX_QUESTION)   # set when this answers a follow-up
+    parent_answer: Optional[str] = Field(None, max_length=MAX_ANSWER)
 
 
 class GenerateFeedbackRequest(BaseModel):
     session_uid: str
     config: InterviewConfig
-    qa_pairs: List[dict]   # [{q, a, eval, type}]
+    qa_pairs: List[dict] = Field(max_length=MAX_QA_PAIRS)   # [{q, a, eval, type}]
 
 
 class HintRequest(BaseModel):
-    question: str
+    question: str = Field(max_length=MAX_QUESTION)
 
 
 class SaveSessionRequest(BaseModel):
     session_uid: str
     config: InterviewConfig
-    qa_pairs: List[dict]
+    qa_pairs: List[dict] = Field(max_length=MAX_QA_PAIRS)
     feedback: dict
     duration_min: Optional[int] = None
 
 
 # ── Response Bodies ──────────────────────────────────────────────
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class QuestionItem(BaseModel):
     q: str

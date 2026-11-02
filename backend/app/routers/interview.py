@@ -1,14 +1,17 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import ai_service, resume
 from app.ai_service import AIServiceError
-from app.database import SessionRecord, get_db
+from app.auth import current_user
+from app.config import settings
+from app.database import SessionRecord, User, get_db
+from app.limits import limiter
 from app.schemas import (
     GenerateQuestionsRequest,
     EvaluateAnswerRequest,
@@ -19,16 +22,16 @@ from app.schemas import (
     FeedbackResponse,
 )
 
-router = APIRouter(prefix="/interview", tags=["interview"])
+router = APIRouter(prefix="/interview", tags=["interview"], dependencies=[Depends(current_user)])
 
 
 RECENT_SESSIONS = 10   # how far back to look for questions not to repeat
 
 
-async def _recent_questions(db: AsyncSession, role: str) -> list[str]:
+async def _recent_questions(db: AsyncSession, user: User, role: str) -> list[str]:
     result = await db.execute(
         select(SessionRecord.qa_data)
-        .where(SessionRecord.role == role)
+        .where(SessionRecord.user_id == user.id, SessionRecord.role == role)
         .order_by(SessionRecord.created_at.desc())
         .limit(RECENT_SESSIONS)
     )
@@ -36,7 +39,8 @@ async def _recent_questions(db: AsyncSession, role: str) -> list[str]:
 
 
 @router.post("/resume")
-def upload_resume(file: UploadFile = File(...)):
+@limiter.limit(settings.ai_rate_limit)
+def upload_resume(request: Request, file: UploadFile = File(...)):
     """Extract a PDF resume's text. The file isn't kept."""
     try:
         text, truncated = resume.extract_text(file.file.read(resume.MAX_BYTES + 1))
@@ -46,9 +50,11 @@ def upload_resume(file: UploadFile = File(...)):
 
 
 @router.post("/questions", response_model=QuestionsResponse)
-async def create_questions(body: GenerateQuestionsRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit(settings.ai_rate_limit)
+async def create_questions(request: Request, body: GenerateQuestionsRequest, db: AsyncSession = Depends(get_db),
+                           user: User = Depends(current_user)):
     cfg = body.config
-    seen = await _recent_questions(db, cfg.role)
+    seen = await _recent_questions(db, user, cfg.role)
     questions, fallback = await asyncio.to_thread(
         ai_service.generate_questions,
         cfg.role,
@@ -70,7 +76,8 @@ def _sse(event: str, data) -> str:
 
 
 @router.post("/evaluate")
-def evaluate(body: EvaluateAnswerRequest):
+@limiter.limit(settings.ai_rate_limit)
+def evaluate(request: Request, body: EvaluateAnswerRequest):
     """Server-sent events: `delta` (next piece of the feedback text), then `result` or `error`."""
     cfg = body.config
 
@@ -96,7 +103,8 @@ def evaluate(body: EvaluateAnswerRequest):
 
 
 @router.post("/feedback", response_model=FeedbackResponse)
-async def feedback(body: GenerateFeedbackRequest):
+@limiter.limit(settings.ai_rate_limit)
+async def feedback(request: Request, body: GenerateFeedbackRequest):
     cfg = body.config
     result = await asyncio.to_thread(
         ai_service.generate_feedback,
@@ -109,6 +117,7 @@ async def feedback(body: GenerateFeedbackRequest):
 
 
 @router.post("/hint")
-async def hint(body: HintRequest):
+@limiter.limit(settings.ai_rate_limit)
+async def hint(request: Request, body: HintRequest):
     text = await asyncio.to_thread(ai_service.generate_hint, body.question)
     return {"hint": text}
